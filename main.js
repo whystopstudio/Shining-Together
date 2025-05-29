@@ -1,6 +1,5 @@
 
-// Firebase 多人同步共閃畫布設定
-
+// ✅ Firebase v9 compat 語法 – 可多人同步
 const firebaseConfig = {
   apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
   authDomain: "shining-together.firebaseapp.com",
@@ -10,7 +9,6 @@ const firebaseConfig = {
   messagingSenderId: "322280033754",
   appId: "1:322280033754:web:cc2137fbcf38226d7704e3"
 };
-
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
