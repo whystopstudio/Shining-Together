@@ -14,9 +14,6 @@ const db = firebase.database();
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-resizeCanvas();
-
-window.addEventListener("resize", resizeCanvas);
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -24,16 +21,8 @@ function resizeCanvas() {
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
-
-function drawCircle(x, y, opacity = 1) {
-  ctx.beginPath();
-  ctx.arc(x, y, 10, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-  ctx.shadowColor = "white";
-  ctx.shadowBlur = 15 * opacity;
-  ctx.fill();
-  ctx.shadowBlur = 0;
-}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
 
 const userId = Math.random().toString(36).substring(2);
 let touches = {};
@@ -44,11 +33,10 @@ canvas.addEventListener("pointerup", removeTouch);
 canvas.addEventListener("pointercancel", removeTouch);
 
 function updateTouch(e) {
-  const rect = canvas.getBoundingClientRect();
   touches[userId] = {
-    x: (e.clientX - rect.left) / rect.width,
-    y: (e.clientY - rect.top) / rect.height,
-    time: Date.now()
+    x: e.clientX / window.innerWidth,
+    y: e.clientY / window.innerHeight,
+    t: Date.now()
   };
   db.ref("touches/" + userId).set(touches[userId]);
 }
@@ -58,26 +46,34 @@ function removeTouch() {
   delete touches[userId];
 }
 
+function drawCircle(x, y, opacity = 1) {
+  ctx.beginPath();
+  ctx.arc(x * canvas.width, y * canvas.height, 10, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+  ctx.shadowColor = "white";
+  ctx.shadowBlur = 20 * opacity;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
 function draw() {
-  ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+  ctx.fillStyle = "black";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const now = Date.now();
   for (const [id, touch] of Object.entries(touches)) {
-    const age = now - touch.time;
-    if (age < 500) {
-      const x = touch.x * canvas.width;
-      const y = touch.y * canvas.height;
-      const opacity = 1 - age / 500;
-      drawCircle(x, y, opacity);
+    const age = now - touch.t;
+    if (age < 600) {
+      const opacity = 1 - age / 600;
+      drawCircle(touch.x, touch.y, opacity);
     }
   }
 
   requestAnimationFrame(draw);
 }
 
-db.ref("touches").on("value", (snapshot) => {
-  touches = snapshot.val() || {};
+db.ref("touches").on("value", (snap) => {
+  touches = snap.val() || {};
 });
 
 draw();
