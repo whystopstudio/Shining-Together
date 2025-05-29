@@ -1,63 +1,74 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
-import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js";
 
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+resizeCanvas();
+
+window.addEventListener('resize', resizeCanvas);
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+// Firebase init
 const firebaseConfig = {
   apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
   authDomain: "shining-together.firebaseapp.com",
   projectId: "shining-together",
-  storageBucket: "shining-together.firebasestorage.app",
+  storageBucket: "shining-together.appspot.com",
   messagingSenderId: "322280033754",
   appId: "1:322280033754:web:cc2137fbcf38226d7704e3",
   databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app/"
 };
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const canvas = document.getElementById("touchCanvas");
-const ctx = canvas.getContext("2d");
+const userId = Math.random().toString(36).substring(2);
+const pointerData = {};
 
-let pointerId = null;
-
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+function sendPosition(x, y) {
+  db.ref("pointers/" + userId).set({ x: x / canvas.width, y: y / canvas.height, t: Date.now() });
 }
-window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
 
-function drawPoint(x, y, alpha = 1) {
+function drawCircle(x, y, alpha = 1) {
   ctx.beginPath();
-  ctx.arc(x, y, 10, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+  ctx.arc(x, y, 15, 0, 2 * Math.PI);
+  ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
   ctx.fill();
 }
 
-const myId = "id_" + Math.random().toString(36).substring(2, 9);
-function updatePosition(x, y) {
-  set(ref(db, "points/" + myId), { x, y, time: Date.now() });
+function clearCanvas() {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-canvas.addEventListener("pointerdown", e => {
-  pointerId = e.pointerId;
-  updatePosition(e.clientX, e.clientY);
-});
-canvas.addEventListener("pointermove", e => {
-  if (e.pointerId === pointerId) updatePosition(e.clientX, e.clientY);
-});
-canvas.addEventListener("pointerup", () => {
-  pointerId = null;
-  set(ref(db, "points/" + myId), null);
-});
-
-onValue(ref(db, "points"), snapshot => {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const data = snapshot.val();
-  if (!data) return;
+// Firebase listener
+db.ref("pointers").on("value", snapshot => {
   const now = Date.now();
-  for (const [id, point] of Object.entries(data)) {
-    if (now - point.time < 1000) {
-      const alpha = 1 - (now - point.time) / 1000;
-      drawPoint(point.x, point.y, alpha);
+  const data = snapshot.val() || {};
+  clearCanvas();
+  for (const id in data) {
+    const p = data[id];
+    const age = now - p.t;
+    if (age < 2000) {
+      const x = p.x * canvas.width;
+      const y = p.y * canvas.height;
+      const alpha = 1 - age / 2000;
+      drawCircle(x, y, alpha);
     }
   }
 });
+
+// Pointer tracking
+function handleEvent(e) {
+  const touches = e.touches ? Array.from(e.touches) : [e];
+  touches.forEach(t => {
+    const x = t.clientX;
+    const y = t.clientY;
+    sendPosition(x, y);
+  });
+}
+
+canvas.addEventListener("pointerdown", handleEvent);
+canvas.addEventListener("pointermove", handleEvent);
+canvas.addEventListener("touchstart", handleEvent);
+canvas.addEventListener("touchmove", handleEvent);
