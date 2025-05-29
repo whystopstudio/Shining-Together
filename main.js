@@ -1,10 +1,10 @@
 
-// 使用者提供 Firebase 設定
+// Firebase 多人同步共閃畫布設定
 
 const firebaseConfig = {
   apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
   authDomain: "shining-together.firebaseapp.com",
-  databaseURL: "https://shining-together.firebaseio.com",
+  databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "shining-together",
   storageBucket: "shining-together.firebasestorage.app",
   messagingSenderId: "322280033754",
