@@ -1,15 +1,14 @@
 
-const canvas = document.getElementById("canvas");
+const canvas = document.querySelector("canvas");
 const ctx = canvas.getContext("2d");
-resizeCanvas();
 
-window.addEventListener('resize', resizeCanvas);
-function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 }
+resize();
+window.addEventListener("resize", resize);
 
-// Firebase init
 const firebaseConfig = {
   apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
   authDomain: "shining-together.firebaseapp.com",
@@ -22,62 +21,57 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const userId = Math.random().toString(36).substring(2);
-const pointerData = {};
+const id = Math.random().toString(36).substring(2);
 
-function sendPosition(x, y) {
-  db.ref("pointers/" + userId).set({ x: x / canvas.width, y: y / canvas.height, t: Date.now() });
-}
-
-function drawCircle(x, y, alpha = 1) {
+function draw(x, y, alpha = 1) {
   ctx.beginPath();
-  ctx.arc(x, y, 15, 0, 2 * Math.PI);
+  ctx.arc(x, y, 12, 0, 2 * Math.PI);
   ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
   ctx.fill();
 }
 
-function clearCanvas() {
-  ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+function fadeCanvas() {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
+setInterval(fadeCanvas, 50);
 
-// Firebase listener
-db.ref("pointers").on("value", snapshot => {
-  const now = Date.now();
-  const data = snapshot.val() || {};
-  clearCanvas();
-  for (const id in data) {
-    const p = data[id];
-    const age = now - p.t;
-    if (age < 2000) {
-      const x = p.x * canvas.width;
-      const y = p.y * canvas.height;
-      const alpha = 1 - age / 2000;
-      drawCircle(x, y, alpha);
-    }
-  }
-});
-
-// Pointer tracking
-function handleEvent(e) {
-  const touches = e.touches ? Array.from(e.touches) : [e];
-  touches.forEach(t => {
-    const x = t.clientX;
-    const y = t.clientY;
-    sendPosition(x, y);
+function writePoint(x, y) {
+  db.ref("pointers/" + id).set({
+    x: x / canvas.width,
+    y: y / canvas.height,
+    t: Date.now()
   });
 }
 
-canvas.addEventListener("pointerdown", handleEvent);
-canvas.addEventListener("pointermove", handleEvent);
-canvas.addEventListener("touchstart", handleEvent);
-canvas.addEventListener("touchmove", handleEvent);
-
-function clearPosition() {
-  db.ref("pointers/" + userId).remove();
+function clearPoint() {
+  db.ref("pointers/" + id).remove();
 }
 
-canvas.addEventListener("pointerup", clearPosition);
-canvas.addEventListener("touchend", clearPosition);
-canvas.addEventListener("pointercancel", clearPosition);
-canvas.addEventListener("touchcancel", clearPosition);
+canvas.addEventListener("pointerdown", (e) => writePoint(e.clientX, e.clientY));
+canvas.addEventListener("pointermove", (e) => {
+  if (e.buttons > 0 || e.pressure > 0) writePoint(e.clientX, e.clientY);
+});
+canvas.addEventListener("pointerup", clearPoint);
+canvas.addEventListener("pointercancel", clearPoint);
+canvas.addEventListener("touchend", clearPoint);
+canvas.addEventListener("touchcancel", clearPoint);
+canvas.addEventListener("touchstart", (e) => {
+  for (let t of e.touches) writePoint(t.clientX, t.clientY);
+});
+canvas.addEventListener("touchmove", (e) => {
+  for (let t of e.touches) writePoint(t.clientX, t.clientY);
+});
+
+firebase.database().ref("pointers").on("value", (snap) => {
+  const data = snap.val();
+  if (!data) return;
+  const now = Date.now();
+  for (let key in data) {
+    const { x, y, t } = data[key];
+    const age = now - t;
+    if (age < 2000) {
+      draw(x * canvas.width, y * canvas.height, 1 - age / 2000);
+    }
+  }
+});
