@@ -21,14 +21,16 @@ window.addEventListener("resize", resizeCanvas);
 function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function drawCircle(x, y, opacity = 1) {
   ctx.beginPath();
-  ctx.arc(x, y, 12, 0, Math.PI * 2);
+  ctx.arc(x, y, 10, 0, Math.PI * 2);
   ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
   ctx.shadowColor = "white";
-  ctx.shadowBlur = 20 * opacity;
+  ctx.shadowBlur = 15 * opacity;
   ctx.fill();
   ctx.shadowBlur = 0;
 }
@@ -42,7 +44,12 @@ canvas.addEventListener("pointerup", removeTouch);
 canvas.addEventListener("pointercancel", removeTouch);
 
 function updateTouch(e) {
-  touches[userId] = { x: e.clientX, y: e.clientY, time: Date.now() };
+  const rect = canvas.getBoundingClientRect();
+  touches[userId] = {
+    x: (e.clientX - rect.left) / rect.width,
+    y: (e.clientY - rect.top) / rect.height,
+    time: Date.now()
+  };
   db.ref("touches/" + userId).set(touches[userId]);
 }
 
@@ -52,15 +59,17 @@ function removeTouch() {
 }
 
 function draw() {
-  ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const now = Date.now();
   for (const [id, touch] of Object.entries(touches)) {
     const age = now - touch.time;
-    if (age < 1000) {
-      const opacity = 1 - age / 1000;
-      drawCircle(touch.x, touch.y, opacity);
+    if (age < 500) {
+      const x = touch.x * canvas.width;
+      const y = touch.y * canvas.height;
+      const opacity = 1 - age / 500;
+      drawCircle(x, y, opacity);
     }
   }
 
