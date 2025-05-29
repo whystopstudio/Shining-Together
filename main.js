@@ -72,3 +72,12 @@ canvas.addEventListener("pointerdown", handleEvent);
 canvas.addEventListener("pointermove", handleEvent);
 canvas.addEventListener("touchstart", handleEvent);
 canvas.addEventListener("touchmove", handleEvent);
+
+function clearPosition() {
+  db.ref("pointers/" + userId).remove();
+}
+
+canvas.addEventListener("pointerup", clearPosition);
+canvas.addEventListener("touchend", clearPosition);
+canvas.addEventListener("pointercancel", clearPosition);
+canvas.addEventListener("touchcancel", clearPosition);
