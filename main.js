@@ -32,30 +32,47 @@ function resizeCanvas() {
   canvas.height = window.innerHeight;
 }
 
-function drawCircle(x, y) {
-  const startTime = performance.now();
-  function fade() {
-    const t = (performance.now() - startTime) / 500;
-    if (t >= 1) return;
+// 保留尾巴軌跡的粒子列表
+let particles = [];
 
-    ctx.fillStyle = `rgba(255, 255, 255, ${1 - t})`;
+function draw() {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  particles = particles.filter(p => performance.now() - p.time < 500);
+  for (let p of particles) {
+    const age = performance.now() - p.time;
+    const alpha = 1 - age / 500;
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
     ctx.beginPath();
-    ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.arc(p.x * canvas.width, p.y * canvas.height, 10, 0, Math.PI * 2);
     ctx.fill();
-    requestAnimationFrame(fade);
   }
-  fade();
+
+  requestAnimationFrame(draw);
+}
+draw();
+
+function addParticle(xNorm, yNorm) {
+  particles.push({ x: xNorm, y: yNorm, time: performance.now() });
 }
 
+// 使用 pointermove 捕捉拖曳座標
 canvas.addEventListener("pointerdown", (e) => {
   const xNorm = e.clientX / canvas.width;
   const yNorm = e.clientY / canvas.height;
   push(touchRef, { x: xNorm, y: yNorm });
 });
 
+canvas.addEventListener("pointermove", (e) => {
+  if (e.pressure > 0 || e.buttons > 0) {
+    const xNorm = e.clientX / canvas.width;
+    const yNorm = e.clientY / canvas.height;
+    push(touchRef, { x: xNorm, y: yNorm });
+  }
+});
+
 onChildAdded(touchRef, (snapshot) => {
   const pt = snapshot.val();
-  const x = pt.x * canvas.width;
-  const y = pt.y * canvas.height;
-  drawCircle(x, y);
+  addParticle(pt.x, pt.y);
 });
