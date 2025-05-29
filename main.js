@@ -1,4 +1,15 @@
 
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+resizeCanvas();
+
+window.addEventListener('resize', resizeCanvas);
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+// Firebase init
 const firebaseConfig = {
   apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
   authDomain: "shining-together.firebaseapp.com",
@@ -6,69 +17,58 @@ const firebaseConfig = {
   storageBucket: "shining-together.appspot.com",
   messagingSenderId: "322280033754",
   appId: "1:322280033754:web:cc2137fbcf38226d7704e3",
-  databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app"
+  databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app/"
 };
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-resizeCanvas();
-
-window.addEventListener("resize", resizeCanvas);
-
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-
-function drawCircle(x, y, opacity = 1) {
-  ctx.beginPath();
-  ctx.arc(x, y, 12, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-  ctx.shadowColor = "white";
-  ctx.shadowBlur = 20 * opacity;
-  ctx.fill();
-  ctx.shadowBlur = 0;
-}
-
 const userId = Math.random().toString(36).substring(2);
-let touches = {};
+const pointerData = {};
 
-canvas.addEventListener("pointerdown", updateTouch);
-canvas.addEventListener("pointermove", updateTouch);
-canvas.addEventListener("pointerup", removeTouch);
-canvas.addEventListener("pointercancel", removeTouch);
-
-function updateTouch(e) {
-  touches[userId] = { x: e.clientX, y: e.clientY, time: Date.now() };
-  db.ref("touches/" + userId).set(touches[userId]);
+function sendPosition(x, y) {
+  db.ref("pointers/" + userId).set({ x: x / canvas.width, y: y / canvas.height, t: Date.now() });
 }
 
-function removeTouch() {
-  db.ref("touches/" + userId).remove();
-  delete touches[userId];
+function drawCircle(x, y, alpha = 1) {
+  ctx.beginPath();
+  ctx.arc(x, y, 15, 0, 2 * Math.PI);
+  ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+  ctx.fill();
 }
 
-function draw() {
+function clearCanvas() {
   ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const now = Date.now();
-  for (const [id, touch] of Object.entries(touches)) {
-    const age = now - touch.time;
-    if (age < 1000) {
-      const opacity = 1 - age / 1000;
-      drawCircle(touch.x, touch.y, opacity);
-    }
-  }
-
-  requestAnimationFrame(draw);
 }
 
-db.ref("touches").on("value", (snapshot) => {
-  touches = snapshot.val() || {};
+// Firebase listener
+db.ref("pointers").on("value", snapshot => {
+  const now = Date.now();
+  const data = snapshot.val() || {};
+  clearCanvas();
+  for (const id in data) {
+    const p = data[id];
+    const age = now - p.t;
+    if (age < 2000) {
+      const x = p.x * canvas.width;
+      const y = p.y * canvas.height;
+      const alpha = 1 - age / 2000;
+      drawCircle(x, y, alpha);
+    }
+  }
 });
 
-draw();
+// Pointer tracking
+function handleEvent(e) {
+  const touches = e.touches ? Array.from(e.touches) : [e];
+  touches.forEach(t => {
+    const x = t.clientX;
+    const y = t.clientY;
+    sendPosition(x, y);
+  });
+}
+
+canvas.addEventListener("pointerdown", handleEvent);
+canvas.addEventListener("pointermove", handleEvent);
+canvas.addEventListener("touchstart", handleEvent);
+canvas.addEventListener("touchmove", handleEvent);
