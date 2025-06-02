@@ -1,4 +1,3 @@
-
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 resizeCanvas();
@@ -23,16 +22,22 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
-const pointerData = {};
 
 function sendPosition(x, y) {
-  db.ref("pointers/" + userId).set({ x: x / canvas.width, y: y / canvas.height, t: Date.now() });
+  db.ref("pointers/" + userId).set({
+    x: x / canvas.width,
+    y: y / canvas.height,
+    t: firebase.database.ServerValue.TIMESTAMP
+  });
 }
 
 function drawCircle(x, y, alpha = 1) {
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, 50);
+  gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+  gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
+  ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.arc(x, y, 15, 0, 2 * Math.PI);
-  ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+  ctx.arc(x, y, 50, 0, 2 * Math.PI);
   ctx.fill();
 }
 
@@ -45,17 +50,20 @@ function clearCanvas() {
 db.ref("pointers").on("value", snapshot => {
   const now = Date.now();
   const data = snapshot.val() || {};
-  clearCanvas();
-  for (const id in data) {
-    const p = data[id];
-    const age = now - p.t;
-    if (age < 2000) {
-      const x = p.x * canvas.width;
-      const y = p.y * canvas.height;
-      const alpha = 1 - age / 2000;
-      drawCircle(x, y, alpha);
+
+  requestAnimationFrame(() => {
+    clearCanvas();
+    for (const id in data) {
+      const p = data[id];
+      const age = now - (p.t || 0);
+      if (age < 2000) {
+        const x = p.x * canvas.width;
+        const y = p.y * canvas.height;
+        const alpha = 1 - age / 2000;
+        drawCircle(x, y, alpha);
+      }
     }
-  }
+  });
 });
 
 // Pointer tracking
