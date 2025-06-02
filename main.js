@@ -16,7 +16,7 @@ const ctx = canvas.getContext("2d");
 const id = Math.random().toString(36).substring(2);
 
 let points = {};
-const pointLife = 3000; // 延長壽命容忍裝置時間差
+const pointLife = 2000;
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -29,16 +29,20 @@ function drawPoints() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const now = Date.now();
   for (const userId in points) {
-    const trail = points[userId];
-    trail.forEach(p => {
-      const age = now - p.time;
-      const alpha = 1 - age / pointLife;
-      if (alpha <= 0) return;
-      ctx.beginPath();
-      ctx.arc(p.x * canvas.width, p.y * canvas.height, 6, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-      ctx.fill();
-    });
+    const p = points[userId];
+    const age = now - p.time;
+    const alpha = 1 - age / pointLife;
+    if (alpha <= 0) continue;
+    const x = p.x * canvas.width;
+    const y = p.y * canvas.height;
+
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, 50);
+    gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+    gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, 50, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -47,7 +51,7 @@ function handleInput(evt) {
   for (let t of touches) {
     const x = t.clientX / window.innerWidth;
     const y = t.clientY / window.innerHeight;
-    db.ref("points/" + id).push({ x, y, time: Date.now() });
+    db.ref("points/" + id).set({ x, y, time: Date.now() });
   }
 }
 canvas.addEventListener("mousemove", handleInput);
@@ -59,8 +63,10 @@ db.ref("points").on("value", snapshot => {
   const now = Date.now();
   points = {};
   for (const userId in data) {
-    const trail = data[userId];
-    points[userId] = Object.values(trail).filter(p => now - p.time <= pointLife);
+    const p = data[userId];
+    if (now - p.time <= pointLife) {
+      points[userId] = p;
+    }
   }
   drawPoints();
 });
