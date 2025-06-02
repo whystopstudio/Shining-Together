@@ -1,71 +1,74 @@
 
-// Firebase Config
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+resizeCanvas();
+
+window.addEventListener('resize', resizeCanvas);
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+// Firebase init
 const firebaseConfig = {
   apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
   authDomain: "shining-together.firebaseapp.com",
   projectId: "shining-together",
-  storageBucket: "shining-together.firebasestorage.app",
+  storageBucket: "shining-together.appspot.com",
   messagingSenderId: "322280033754",
   appId: "1:322280033754:web:cc2137fbcf38226d7704e3",
-  databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app"
+  databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app/"
 };
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+const userId = Math.random().toString(36).substring(2);
+const pointerData = {};
 
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+function sendPosition(x, y) {
+  db.ref("pointers/" + userId).set({ x: x / canvas.width, y: y / canvas.height, t: Date.now() });
 }
-window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
 
-function drawCircle(x, y, opacity) {
+function drawCircle(x, y, alpha = 1) {
   ctx.beginPath();
-  ctx.arc(x * canvas.width, y * canvas.height, 10, 0, 2 * Math.PI);
-  ctx.fillStyle = "rgba(255, 255, 255, " + opacity + ")";
-  ctx.shadowColor = "white";
-  ctx.shadowBlur = 10 * opacity;
+  ctx.arc(x, y, 15, 0, 2 * Math.PI);
+  ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
   ctx.fill();
 }
 
-canvas.addEventListener("pointermove", (e) => {
-  sendPoint(e.clientX, e.clientY);
-});
-canvas.addEventListener("pointerdown", (e) => {
-  sendPoint(e.clientX, e.clientY);
-});
-
-function sendPoint(x, y) {
-  const pt = {
-    x: x / window.innerWidth,
-    y: y / window.innerHeight,
-    t: Date.now()
-  };
-  db.ref("points").push(pt);
-}
-
-let points = [];
-
-db.ref("points").on("child_added", (snap) => {
-  const pt = snap.val();
-  points.push(pt);
-});
-
-function animate() {
-  ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+function clearCanvas() {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const now = Date.now();
-  points = points.filter(pt => now - pt.t < 1000);
-  for (let pt of points) {
-    const opacity = 1 - (now - pt.t) / 1000;
-    drawCircle(pt.x, pt.y, opacity);
-  }
-
-  requestAnimationFrame(animate);
 }
-animate();
+
+// Firebase listener
+db.ref("pointers").on("value", snapshot => {
+  const now = Date.now();
+  const data = snapshot.val() || {};
+  clearCanvas();
+  for (const id in data) {
+    const p = data[id];
+    const age = now - p.t;
+    if (age < 2000) {
+      const x = p.x * canvas.width;
+      const y = p.y * canvas.height;
+      const alpha = 1 - age / 2000;
+      drawCircle(x, y, alpha);
+    }
+  }
+});
+
+// Pointer tracking
+function handleEvent(e) {
+  const touches = e.touches ? Array.from(e.touches) : [e];
+  touches.forEach(t => {
+    const x = t.clientX;
+    const y = t.clientY;
+    sendPosition(x, y);
+  });
+}
+
+canvas.addEventListener("pointerdown", handleEvent);
+canvas.addEventListener("pointermove", handleEvent);
+canvas.addEventListener("touchstart", handleEvent);
+canvas.addEventListener("touchmove", handleEvent);
