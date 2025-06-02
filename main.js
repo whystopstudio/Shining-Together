@@ -8,7 +8,6 @@ function resizeCanvas() {
     canvas.height = window.innerHeight;
 }
 
-// Firebase init
 const firebaseConfig = {
   apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
   authDomain: "shining-together.firebaseapp.com",
@@ -22,7 +21,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
-const pointerRadius = 30;  // 改為半徑 30px
+const pointerRadius = 30;
 const activeTouchIds = new Set();
 
 function sendPosition(pointerId, x, y) {
@@ -59,15 +58,15 @@ db.ref("pointers").on("value", snapshot => {
 });
 
 function animate() {
-  fadeCanvas();  // 導入拖尾效果
+  fadeCanvas();
   const now = Date.now();
   for (const id in activePoints) {
     const p = activePoints[id];
     const age = now - (p.t || 0);
-    if (age < 2000) {
+    if (age < 300) {
       const x = p.x * canvas.width;
       const y = p.y * canvas.height;
-      const alpha = 1 - age / 2000;
+      const alpha = 1 - age / 300;
       drawCircle(x, y, alpha);
     }
   }
@@ -85,7 +84,6 @@ function handleTouchMove(e) {
     activeTouchIds.add(t.identifier);
   });
 
-  // 移除不再存在的指頭
   activeTouchIds.forEach(id => {
     if (!seen.has(id)) {
       clearPosition(id);
@@ -97,7 +95,6 @@ function handleTouchMove(e) {
 canvas.addEventListener("touchstart", handleTouchMove);
 canvas.addEventListener("touchmove", handleTouchMove);
 
-// 滑鼠也支援
 canvas.addEventListener("pointerdown", e => sendPosition("mouse", e.clientX, e.clientY));
 canvas.addEventListener("pointermove", e => {
   if (e.buttons > 0) sendPosition("mouse", e.clientX, e.clientY);
