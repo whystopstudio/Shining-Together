@@ -22,7 +22,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
-const pointerRadius = 40;
+const pointerRadius = 30;  // 改為半徑 30px
 const activeTouchIds = new Set();
 
 function sendPosition(pointerId, x, y) {
@@ -47,8 +47,9 @@ function drawCircle(x, y, alpha = 1) {
   ctx.fill();
 }
 
-function clearCanvas() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+function fadeCanvas() {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 let activePoints = {};
@@ -58,7 +59,7 @@ db.ref("pointers").on("value", snapshot => {
 });
 
 function animate() {
-  clearCanvas();
+  fadeCanvas();  // 導入拖尾效果
   const now = Date.now();
   for (const id in activePoints) {
     const p = activePoints[id];
