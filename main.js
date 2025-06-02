@@ -70,14 +70,13 @@ function animate() {
     const y = p.y * canvas.height;
 
     if (p.active) {
-      drawCircle(x, y, 1); // 手指還在，持續顯示
+      drawCircle(x, y, 1);
     } else {
       const age = now - (p.t || 0);
       if (age < 300) {
         const alpha = 1 - age / 300;
-        drawCircle(x, y, alpha); // 手指離開，0.3秒內淡出
+        drawCircle(x, y, alpha);
       }
-      // 若 age >= 300 就不再繪製（自動消失）
     }
   }
   requestAnimationFrame(animate);
