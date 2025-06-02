@@ -16,7 +16,7 @@ const ctx = canvas.getContext("2d");
 const id = Math.random().toString(36).substring(2);
 
 let points = {};
-const pointLife = 2000;
+const pointLife = 5000; // 延長壽命容錯並配合 server timestamp
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -51,7 +51,10 @@ function handleInput(evt) {
   for (let t of touches) {
     const x = t.clientX / window.innerWidth;
     const y = t.clientY / window.innerHeight;
-    db.ref("points/" + id).set({ x, y, time: Date.now() });
+    db.ref("points/" + id).set({
+      x, y,
+      time: firebase.database.ServerValue.TIMESTAMP
+    });
   }
 }
 canvas.addEventListener("mousemove", handleInput);
@@ -64,8 +67,9 @@ db.ref("points").on("value", snapshot => {
   points = {};
   for (const userId in data) {
     const p = data[userId];
-    if (now - p.time <= pointLife) {
-      points[userId] = p;
+    const pTime = p.time || 0;
+    if (now - pTime <= pointLife) {
+      points[userId] = { ...p, time: pTime };
     }
   }
   drawPoints();
