@@ -22,22 +22,27 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
+const pointerRadius = 40; // 原來是 50，現在縮小為 80%
 
-function sendPosition(x, y) {
-  db.ref("pointers/" + userId).set({
+function sendPosition(fingerId, x, y) {
+  db.ref("pointers/" + userId + "_" + fingerId).set({
     x: x / canvas.width,
     y: y / canvas.height,
     t: firebase.database.ServerValue.TIMESTAMP
   });
 }
 
+function clearPosition(fingerId) {
+  db.ref("pointers/" + userId + "_" + fingerId).remove();
+}
+
 function drawCircle(x, y, alpha = 1) {
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, 50);
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius);
   gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
   gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
   ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.arc(x, y, 50, 0, 2 * Math.PI);
+  ctx.arc(x, y, pointerRadius, 0, 2 * Math.PI);
   ctx.fill();
 }
 
@@ -66,17 +71,28 @@ db.ref("pointers").on("value", snapshot => {
   });
 });
 
-// Pointer tracking
-function handleEvent(e) {
-  const touches = e.touches ? Array.from(e.touches) : [e];
-  touches.forEach(t => {
-    const x = t.clientX;
-    const y = t.clientY;
-    sendPosition(x, y);
+// 多指觸控處理
+function handleTouchMove(e) {
+  const touches = e.touches ? Array.from(e.touches) : [];
+  touches.forEach((t, i) => {
+    sendPosition(i, t.clientX, t.clientY);
   });
 }
 
-canvas.addEventListener("pointerdown", handleEvent);
-canvas.addEventListener("pointermove", handleEvent);
-canvas.addEventListener("touchstart", handleEvent);
-canvas.addEventListener("touchmove", handleEvent);
+function handleTouchEnd(e) {
+  const changed = e.changedTouches ? Array.from(e.changedTouches) : [];
+  changed.forEach((t, i) => {
+    clearPosition(i);
+  });
+}
+
+canvas.addEventListener("touchstart", handleTouchMove);
+canvas.addEventListener("touchmove", handleTouchMove);
+canvas.addEventListener("touchend", handleTouchEnd);
+canvas.addEventListener("touchcancel", handleTouchEnd);
+
+// 滑鼠也支援（單一指標）
+canvas.addEventListener("pointerdown", e => sendPosition("mouse", e.clientX, e.clientY));
+canvas.addEventListener("pointermove", e => sendPosition("mouse", e.clientX, e.clientY));
+canvas.addEventListener("pointerup", () => clearPosition("mouse"));
+canvas.addEventListener("pointerleave", () => clearPosition("mouse"));
