@@ -22,18 +22,18 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
-const pointerRadius = 40; // 原來是 50，現在縮小為 80%
+const pointerRadius = 40; // 縮小到 80%
 
-function sendPosition(fingerId, x, y) {
-  db.ref("pointers/" + userId + "_" + fingerId).set({
+function sendPosition(pointerId, x, y) {
+  db.ref("pointers/" + userId + "_" + pointerId).set({
     x: x / canvas.width,
     y: y / canvas.height,
     t: firebase.database.ServerValue.TIMESTAMP
   });
 }
 
-function clearPosition(fingerId) {
-  db.ref("pointers/" + userId + "_" + fingerId).remove();
+function clearPosition(pointerId) {
+  db.ref("pointers/" + userId + "_" + pointerId).remove();
 }
 
 function drawCircle(x, y, alpha = 1) {
@@ -74,15 +74,15 @@ db.ref("pointers").on("value", snapshot => {
 // 多指觸控處理
 function handleTouchMove(e) {
   const touches = e.touches ? Array.from(e.touches) : [];
-  touches.forEach((t, i) => {
-    sendPosition(i, t.clientX, t.clientY);
+  touches.forEach(t => {
+    sendPosition(t.identifier, t.clientX, t.clientY);
   });
 }
 
 function handleTouchEnd(e) {
   const changed = e.changedTouches ? Array.from(e.changedTouches) : [];
-  changed.forEach((t, i) => {
-    clearPosition(i);
+  changed.forEach(t => {
+    clearPosition(t.identifier);
   });
 }
 
@@ -93,6 +93,10 @@ canvas.addEventListener("touchcancel", handleTouchEnd);
 
 // 滑鼠也支援（單一指標）
 canvas.addEventListener("pointerdown", e => sendPosition("mouse", e.clientX, e.clientY));
-canvas.addEventListener("pointermove", e => sendPosition("mouse", e.clientX, e.clientY));
+canvas.addEventListener("pointermove", e => {
+  if (e.buttons > 0) {
+    sendPosition("mouse", e.clientX, e.clientY);
+  }
+});
 canvas.addEventListener("pointerup", () => clearPosition("mouse"));
 canvas.addEventListener("pointerleave", () => clearPosition("mouse"));
