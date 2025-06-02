@@ -16,7 +16,7 @@ const ctx = canvas.getContext("2d");
 const id = Math.random().toString(36).substring(2);
 
 let points = {};
-const pointLife = 1000;
+const pointLife = 3000; // 延長壽命容忍裝置時間差
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
