@@ -83,8 +83,15 @@ function animate() {
 }
 animate();
 
+function handleTouchStart(e) {
+  const touches = Array.from(e.touches || []);
+  touches.forEach(t => {
+    sendPosition(t.identifier, t.clientX, t.clientY);
+  });
+}
+
 function handleTouchMove(e) {
-  const touches = e.touches ? Array.from(e.touches) : [];
+  const touches = Array.from(e.touches || []);
   const seen = new Set();
 
   touches.forEach(t => {
@@ -101,7 +108,7 @@ function handleTouchMove(e) {
   });
 }
 
-canvas.addEventListener("touchstart", handleTouchMove);
+canvas.addEventListener("touchstart", handleTouchStart);
 canvas.addEventListener("touchmove", handleTouchMove);
 
 canvas.addEventListener("pointerdown", e => sendPosition("mouse", e.clientX, e.clientY));
