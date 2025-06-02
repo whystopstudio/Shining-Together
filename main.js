@@ -22,13 +22,13 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
-const pointerRadius = 40; // 縮小到 80%
+const pointerRadius = 40;
 
 function sendPosition(pointerId, x, y) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
     x: x / canvas.width,
     y: y / canvas.height,
-    t: firebase.database.ServerValue.TIMESTAMP
+    t: Date.now()  // 改回本地時間以即時反應
   });
 }
 
@@ -47,29 +47,32 @@ function drawCircle(x, y, alpha = 1) {
 }
 
 function clearCanvas() {
-  ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
-// Firebase listener
-db.ref("pointers").on("value", snapshot => {
-  const now = Date.now();
-  const data = snapshot.val() || {};
+let activePoints = {};
 
-  requestAnimationFrame(() => {
-    clearCanvas();
-    for (const id in data) {
-      const p = data[id];
-      const age = now - (p.t || 0);
-      if (age < 2000) {
-        const x = p.x * canvas.width;
-        const y = p.y * canvas.height;
-        const alpha = 1 - age / 2000;
-        drawCircle(x, y, alpha);
-      }
-    }
-  });
+db.ref("pointers").on("value", snapshot => {
+  const data = snapshot.val() || {};
+  activePoints = data;
 });
+
+function animate() {
+  clearCanvas();
+  const now = Date.now();
+  for (const id in activePoints) {
+    const p = activePoints[id];
+    const age = now - (p.t || 0);
+    if (age < 2000) {
+      const x = p.x * canvas.width;
+      const y = p.y * canvas.height;
+      const alpha = 1 - age / 2000;
+      drawCircle(x, y, alpha);
+    }
+  }
+  requestAnimationFrame(animate);
+}
+animate();
 
 // 多指觸控處理
 function handleTouchMove(e) {
