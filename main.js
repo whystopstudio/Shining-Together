@@ -23,12 +23,13 @@ const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
 const pointerRadius = 40;
+const activeTouchIds = new Set();
 
 function sendPosition(pointerId, x, y) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
     x: x / canvas.width,
     y: y / canvas.height,
-    t: Date.now()  // 改回本地時間以即時反應
+    t: Date.now()
   });
 }
 
@@ -53,8 +54,7 @@ function clearCanvas() {
 let activePoints = {};
 
 db.ref("pointers").on("value", snapshot => {
-  const data = snapshot.val() || {};
-  activePoints = data;
+  activePoints = snapshot.val() || {};
 });
 
 function animate() {
@@ -74,32 +74,32 @@ function animate() {
 }
 animate();
 
-// 多指觸控處理
 function handleTouchMove(e) {
   const touches = e.touches ? Array.from(e.touches) : [];
+  const seen = new Set();
+
   touches.forEach(t => {
     sendPosition(t.identifier, t.clientX, t.clientY);
+    seen.add(t.identifier);
+    activeTouchIds.add(t.identifier);
   });
-}
 
-function handleTouchEnd(e) {
-  const changed = e.changedTouches ? Array.from(e.changedTouches) : [];
-  changed.forEach(t => {
-    clearPosition(t.identifier);
+  // 移除不再存在的指頭
+  activeTouchIds.forEach(id => {
+    if (!seen.has(id)) {
+      clearPosition(id);
+      activeTouchIds.delete(id);
+    }
   });
 }
 
 canvas.addEventListener("touchstart", handleTouchMove);
 canvas.addEventListener("touchmove", handleTouchMove);
-canvas.addEventListener("touchend", handleTouchEnd);
-canvas.addEventListener("touchcancel", handleTouchEnd);
 
-// 滑鼠也支援（單一指標）
+// 滑鼠也支援
 canvas.addEventListener("pointerdown", e => sendPosition("mouse", e.clientX, e.clientY));
 canvas.addEventListener("pointermove", e => {
-  if (e.buttons > 0) {
-    sendPosition("mouse", e.clientX, e.clientY);
-  }
+  if (e.buttons > 0) sendPosition("mouse", e.clientX, e.clientY);
 });
 canvas.addEventListener("pointerup", () => clearPosition("mouse"));
 canvas.addEventListener("pointerleave", () => clearPosition("mouse"));
