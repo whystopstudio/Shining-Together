@@ -28,12 +28,16 @@ function sendPosition(pointerId, x, y) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
     x: x / canvas.width,
     y: y / canvas.height,
-    t: Date.now()
+    t: Date.now(),
+    active: true
   });
 }
 
 function clearPosition(pointerId) {
-  db.ref("pointers/" + userId + "_" + pointerId).remove();
+  db.ref("pointers/" + userId + "_" + pointerId).set({
+    t: Date.now(),
+    active: false
+  });
 }
 
 function drawCircle(x, y, alpha = 1) {
@@ -62,12 +66,17 @@ function animate() {
   const now = Date.now();
   for (const id in activePoints) {
     const p = activePoints[id];
-    const age = now - (p.t || 0);
-    if (age < 300) {
-      const x = p.x * canvas.width;
-      const y = p.y * canvas.height;
-      const alpha = 1 - age / 300;
-      drawCircle(x, y, alpha);
+    const x = p.x * canvas.width;
+    const y = p.y * canvas.height;
+
+    if (p.active) {
+      drawCircle(x, y, 1); // 手指還在，保持顯示
+    } else {
+      const age = now - (p.t || 0);
+      if (age < 300) {
+        const alpha = 1 - age / 300;
+        drawCircle(x, y, alpha); // 離開後淡出
+      }
     }
   }
   requestAnimationFrame(animate);
