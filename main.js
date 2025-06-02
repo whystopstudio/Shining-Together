@@ -74,12 +74,11 @@ function animate() {
     } else {
       const age = now - (p.t || 0);
       if (age < 300) {
-        drawCircle(x, y, 1 - age / 300);
-      } else {
-        db.ref('pointers/' + id).remove();
-
         const alpha = 1 - age / 300;
-        
+        drawCircle(x, y, alpha);
+      } else {
+        // 主動刪除過期資料
+        db.ref("pointers/" + id).remove();
       }
     }
   }
