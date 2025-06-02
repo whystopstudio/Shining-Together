@@ -1,11 +1,13 @@
+
+// Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
   authDomain: "shining-together.firebaseapp.com",
-  databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "shining-together",
-  storageBucket: "shining-together.appspot.com",
+  storageBucket: "shining-together.firebasestorage.app",
   messagingSenderId: "322280033754",
-  appId: "1:322280033754:web:cc2137fbcf38226d7704e3"
+  appId: "1:322280033754:web:cc2137fbcf38226d7704e3",
+  databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -13,65 +15,57 @@ const db = firebase.database();
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-const id = Math.random().toString(36).substring(2);
-
-let points = {};
-const pointLife = 5000; // 延長壽命容錯並配合 server timestamp
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 }
-resizeCanvas();
 window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
 
-function drawPoints() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const now = Date.now();
-  for (const userId in points) {
-    const p = points[userId];
-    const age = now - p.time;
-    const alpha = 1 - age / pointLife;
-    if (alpha <= 0) continue;
-    const x = p.x * canvas.width;
-    const y = p.y * canvas.height;
-
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, 50);
-    gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
-    gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(x, y, 50, 0, Math.PI * 2);
-    ctx.fill();
-  }
+function drawCircle(x, y, opacity) {
+  ctx.beginPath();
+  ctx.arc(x * canvas.width, y * canvas.height, 10, 0, 2 * Math.PI);
+  ctx.fillStyle = "rgba(255, 255, 255, " + opacity + ")";
+  ctx.shadowColor = "white";
+  ctx.shadowBlur = 10 * opacity;
+  ctx.fill();
 }
 
-function handleInput(evt) {
-  const touches = evt.touches || [evt];
-  for (let t of touches) {
-    const x = t.clientX / window.innerWidth;
-    const y = t.clientY / window.innerHeight;
-    db.ref("points/" + id).set({
-      x, y,
-      time: firebase.database.ServerValue.TIMESTAMP
-    });
-  }
-}
-canvas.addEventListener("mousemove", handleInput);
-canvas.addEventListener("touchmove", handleInput);
-
-db.ref("points").on("value", snapshot => {
-  const data = snapshot.val();
-  if (!data) return;
-  const now = Date.now();
-  points = {};
-  for (const userId in data) {
-    const p = data[userId];
-    const pTime = p.time || 0;
-    if (now - pTime <= pointLife) {
-      points[userId] = { ...p, time: pTime };
-    }
-  }
-  drawPoints();
+canvas.addEventListener("pointermove", (e) => {
+  sendPoint(e.clientX, e.clientY);
 });
-setInterval(drawPoints, 30);
+canvas.addEventListener("pointerdown", (e) => {
+  sendPoint(e.clientX, e.clientY);
+});
+
+function sendPoint(x, y) {
+  const pt = {
+    x: x / window.innerWidth,
+    y: y / window.innerHeight,
+    t: Date.now()
+  };
+  db.ref("points").push(pt);
+}
+
+let points = [];
+
+db.ref("points").on("child_added", (snap) => {
+  const pt = snap.val();
+  points.push(pt);
+});
+
+function animate() {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const now = Date.now();
+  points = points.filter(pt => now - pt.t < 1000);
+  for (let pt of points) {
+    const opacity = 1 - (now - pt.t) / 1000;
+    drawCircle(pt.x, pt.y, opacity);
+  }
+
+  requestAnimationFrame(animate);
+}
+animate();
