@@ -31,6 +31,7 @@ function sendPosition(pointerId, x, y) {
     t: Date.now()
   });
 }
+
 function clearPosition(pointerId) {
   db.ref("pointers/" + userId + "_" + pointerId).remove();
 }
@@ -51,20 +52,27 @@ function fadeCanvas() {
 }
 
 let activePoints = {};
-let fadingPoints = {};
 
 db.ref("pointers").on("value", snapshot => {
   activePoints = snapshot.val() || {};
 });
 
-function addFadingPoint(id, x, y) {
-  fadingPoints[id] = {
-    x,
-    y,
-    start: Date.now(),
-    duration: 300
-  };
+function animate() {
+  fadeCanvas();
+  const now = Date.now();
+  for (const id in activePoints) {
+    const p = activePoints[id];
+    const age = now - (p.t || 0);
+    if (age < 300) {
+      const x = p.x * canvas.width;
+      const y = p.y * canvas.height;
+      const alpha = 1 - age / 300;
+      drawCircle(x, y, alpha);
+    }
+  }
+  requestAnimationFrame(animate);
 }
+animate();
 
 function handleTouchMove(e) {
   const touches = e.touches ? Array.from(e.touches) : [];
@@ -78,11 +86,6 @@ function handleTouchMove(e) {
 
   activeTouchIds.forEach(id => {
     if (!seen.has(id)) {
-      const pointerKey = userId + "_" + id;
-      if (activePoints[pointerKey]) {
-        const p = activePoints[pointerKey];
-        addFadingPoint(id, p.x, p.y);
-      }
       clearPosition(id);
       activeTouchIds.delete(id);
     }
@@ -91,53 +94,10 @@ function handleTouchMove(e) {
 
 canvas.addEventListener("touchstart", handleTouchMove);
 canvas.addEventListener("touchmove", handleTouchMove);
-canvas.addEventListener("touchend", handleTouchMove);
-canvas.addEventListener("touchcancel", handleTouchMove);
 
-let mouseDown = false;
-canvas.addEventListener("pointerdown", e => {
-  mouseDown = true;
-  sendPosition("mouse", e.clientX, e.clientY);
-});
+canvas.addEventListener("pointerdown", e => sendPosition("mouse", e.clientX, e.clientY));
 canvas.addEventListener("pointermove", e => {
-  if (mouseDown || e.buttons > 0) sendPosition("mouse", e.clientX, e.clientY);
+  if (e.buttons > 0) sendPosition("mouse", e.clientX, e.clientY);
 });
-canvas.addEventListener("pointerup", () => {
-  const pointerKey = userId + "_mouse";
-  if (activePoints[pointerKey]) {
-    const p = activePoints[pointerKey];
-    addFadingPoint("mouse", p.x, p.y);
-  }
-  clearPosition("mouse");
-  mouseDown = false;
-});
-canvas.addEventListener("pointerleave", () => {
-  const pointerKey = userId + "_mouse";
-  if (activePoints[pointerKey]) {
-    const p = activePoints[pointerKey];
-    addFadingPoint("mouse", p.x, p.y);
-  }
-  clearPosition("mouse");
-  mouseDown = false;
-});
-
-function animate() {
-  fadeCanvas();
-  for (const id in activePoints) {
-    const p = activePoints[id];
-    const x = p.x * canvas.width;
-    const y = p.y * canvas.height;
-    drawCircle(x, y, 1);
-  }
-
-  const now = Date.now();
-  for (const id in fadingPoints) {
-    const f = fadingPoints[id];
-    const progress = Math.min(1, (now - f.start) / f.duration);
-    drawCircle(f.x * canvas.width, f.y * canvas.height, 1 - progress);
-    if (progress >= 1) delete fadingPoints[id];
-  }
-
-  requestAnimationFrame(animate);
-}
-animate();
+canvas.addEventListener("pointerup", () => clearPosition("mouse"));
+canvas.addEventListener("pointerleave", () => clearPosition("mouse"));
