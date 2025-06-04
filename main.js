@@ -24,6 +24,7 @@ const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
 const pointerRadius = 30;
+const DOT_SHOW_MS = 300;
 const TRACE_MAX_AGE = 1000; // ms, 軌跡持續時間
 const TRACE_MAX_LEN = 30;   // 最多保留多少點
 const activeTouchIds = new Set();
@@ -57,7 +58,6 @@ function drawTrace(trace, fadeOut = false) {
     const p1 = trace[i - 1];
     const p2 = trace[i];
     const now = Date.now();
-    // 漸層透明（根據離現在多久）
     let alpha = 1;
     if (fadeOut) {
       alpha = Math.max(0, 1 - (now - p2.t) / TRACE_MAX_AGE);
@@ -71,6 +71,17 @@ function drawTrace(trace, fadeOut = false) {
   }
 }
 
+// --- 畫圓點 ---
+function drawDot(x, y, alpha = 1) {
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius);
+  gradient.addColorStop(0, `rgba(255,255,255,${alpha})`);
+  gradient.addColorStop(1, `rgba(255,255,255,0)`);
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(x, y, pointerRadius, 0, 2 * Math.PI);
+  ctx.fill();
+}
+
 // --- 讓畫布慢慢淡出 ---
 function fadeCanvas() {
   ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
@@ -80,6 +91,9 @@ function fadeCanvas() {
 // --- 本地離線的 trace 也要淡出 ---
 let fadingTraces = []; // [{trace: [...], tEnd: time}]
 
+// --- 本地點下產生的圓點 ---
+let activeDots = []; // {x, y, t}
+
 function animate() {
   fadeCanvas();
 
@@ -87,7 +101,6 @@ function animate() {
   for (const id in activePointers) {
     const pointer = activePointers[id];
     if (!pointer.trace) continue;
-    // 還原成實際座標
     const trace = pointer.trace
       .filter(p => Date.now() - p.t < TRACE_MAX_AGE)
       .map(p => ({
@@ -98,20 +111,25 @@ function animate() {
     drawTrace(trace, true);
   }
 
-  // 2. 畫自己本地 fading traces（手指離開後繼續殘影）
-  fadingTraces = fadingTraces.filter(ft => {
-    // 保留還沒全數淡出的 trace
-    return Date.now() - ft.endTime < TRACE_MAX_AGE;
-  });
+  // 2. 畫自己本地 fading traces
+  fadingTraces = fadingTraces.filter(ft => Date.now() - ft.endTime < TRACE_MAX_AGE);
   for (const ft of fadingTraces) {
     drawTrace(ft.trace, true);
+  }
+
+  // 3. 畫自己本地圓點
+  const now = Date.now();
+  activeDots = activeDots.filter(dot => now - dot.t < DOT_SHOW_MS);
+  for (const dot of activeDots) {
+    const alpha = 1 - (now - dot.t) / DOT_SHOW_MS;
+    drawDot(dot.x, dot.y, alpha);
   }
 
   requestAnimationFrame(animate);
 }
 animate();
 
-// --- 處理觸控（多指） ---
+// --- 觸控（多指） ---
 function handleTouchMove(e) {
   const touches = e.touches ? Array.from(e.touches) : [];
   const seen = new Set();
@@ -125,7 +143,6 @@ function handleTouchMove(e) {
     // push to localTraces
     if (!localTraces[id]) localTraces[id] = [];
     localTraces[id].push({ x: t.clientX, y: t.clientY, t: now });
-    // 只保留最近 TRACE_MAX_AGE 內的資料點
     localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
     if (localTraces[id].length > TRACE_MAX_LEN) localTraces[id].shift();
 
@@ -135,7 +152,6 @@ function handleTouchMove(e) {
   // 清掉不在上的指頭
   activeTouchIds.forEach(id => {
     if (!seen.has(id)) {
-      // 殘影處理：本地保存最後一段 trace
       if (localTraces[id]) {
         fadingTraces.push({
           trace: localTraces[id].map(p => ({...p})),
@@ -149,18 +165,27 @@ function handleTouchMove(e) {
   });
 }
 
-canvas.addEventListener("touchstart", handleTouchMove);
+// 在 touchstart 加入圓點
+canvas.addEventListener("touchstart", function(e) {
+  const touches = e.touches ? Array.from(e.touches) : [];
+  const now = Date.now();
+  touches.forEach(t => {
+    activeDots.push({ x: t.clientX, y: t.clientY, t: now });
+  });
+  handleTouchMove(e);
+});
 canvas.addEventListener("touchmove", handleTouchMove);
-
 canvas.addEventListener("touchend", handleTouchMove);
 canvas.addEventListener("touchcancel", handleTouchMove);
 
-// --- 滑鼠單點邏輯 ---
+// 滑鼠單點邏輯
 let mouseDown = false;
 canvas.addEventListener("pointerdown", e => {
   mouseDown = true;
   const id = "mouse";
   const now = Date.now();
+  // 新增圓點
+  activeDots.push({ x: e.clientX, y: e.clientY, t: now });
   if (!localTraces[id]) localTraces[id] = [];
   localTraces[id].push({ x: e.clientX, y: e.clientY, t: now });
   localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
