@@ -51,42 +51,45 @@ db.ref("pointers").on("value", snapshot => {
   activePointers = snapshot.val() || {};
 });
 
-// --- 畫軌跡 ---
-function drawTrace(trace, fadeOut = false, isActive = false) {
-  if (!trace || trace.length === 0) return;
-  const now = Date.now();
-  const N = trace.length;
-  for (let i = 0; i < N; ++i) {
-    const p = trace[i];
-    let ratio = (N === 1) ? 0 : i / (N - 1);
-    let alpha = 1;
-    let radius = pointerRadius;
+function distance(p1, p2) {
+  return Math.hypot(p2.x - p1.x, p2.y - p1.y);
+}
 
-    if (isActive && i === N - 1) {
-      // 活躍點：最後一點始終全亮最大
-      alpha = 1;
-      radius = pointerRadius;
-    } else {
-      // 尾巴：越遠越細越淡
-      alpha = 0.55 * (1 - ratio) + 0.25;
-      radius = pointerRadius * (0.8 * (1 - ratio) + 0.25);
-      if (fadeOut) {
-        alpha *= Math.max(0, 1 - (now - p.t) / TRACE_MAX_AGE);
-      }
+// --- 畫軌跡：用插值畫很密的線條（pointer還在時整條線都不會消失） ---
+function drawTrace(trace, fadeOut = false) {
+  if (!trace || trace.length < 2) return;
+  for (let i = 1; i < trace.length; ++i) {
+    const p1 = trace[i - 1];
+    const p2 = trace[i];
+    const now = Date.now();
+    let alpha = 1;
+    if (fadeOut) {
+      alpha = Math.max(0, 1 - (now - p2.t) / TRACE_MAX_AGE);
     }
-    drawDot(p.x, p.y, alpha, radius);
-    // 平滑化可在這補插值點（此處省略，可再升級）
+    // 插值：距離大於10px就補點
+    const steps = Math.ceil(distance(p1, p2) / 10);
+    for (let s = 0; s <= steps; ++s) {
+      const t = s / steps;
+      const x = p1.x * (1 - t) + p2.x * t;
+      const y = p1.y * (1 - t) + p2.y * t;
+      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+      ctx.lineWidth = pointerRadius * 2 * alpha;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
   }
 }
 
 // --- 畫圓點 ---
-function drawDot(x, y, alpha = 1, radius = pointerRadius) {
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+function drawDot(x, y, alpha = 1) {
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius);
   gradient.addColorStop(0, `rgba(255,255,255,${alpha})`);
   gradient.addColorStop(1, `rgba(255,255,255,0)`);
   ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.arc(x, y, radius, 0, 2 * Math.PI);
+  ctx.arc(x, y, pointerRadius, 0, 2 * Math.PI);
   ctx.fill();
 }
 
@@ -105,24 +108,23 @@ let activeDots = []; // {x, y, t}
 function animate() {
   fadeCanvas();
 
-  // 1. 畫所有來自 firebase 的 trace（活著的，尾巴不淡出，最後一點始終發光）
+  // 1. 畫所有來自 firebase 的 trace（不淡出）
   for (const id in activePointers) {
     const pointer = activePointers[id];
     if (!pointer.trace) continue;
-    const trace = pointer.trace
-      .filter(p => Date.now() - p.t < TRACE_MAX_AGE)
-      .map(p => ({
-        x: p.x * canvas.width,
-        y: p.y * canvas.height,
-        t: p.t
-      }));
-    drawTrace(trace, false, true); // 活著的指標不淡出
+    // 這裡不過濾，只要 pointer 還在，整條線都會保留
+    const trace = pointer.trace.map(p => ({
+      x: p.x * canvas.width,
+      y: p.y * canvas.height,
+      t: p.t
+    }));
+    drawTrace(trace, false);
   }
 
   // 2. 畫自己本地 fading traces
   fadingTraces = fadingTraces.filter(ft => Date.now() - ft.endTime < TRACE_MAX_AGE);
   for (const ft of fadingTraces) {
-    drawTrace(ft.trace, true, false);
+    drawTrace(ft.trace, true);
   }
 
   // 3. 畫自己本地圓點
@@ -151,7 +153,6 @@ function handleTouchMove(e) {
     // push to localTraces
     if (!localTraces[id]) localTraces[id] = [];
     localTraces[id].push({ x: t.clientX, y: t.clientY, t: now });
-    localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
     if (localTraces[id].length > TRACE_MAX_LEN) localTraces[id].shift();
 
     sendTrace(id, localTraces[id]);
@@ -196,7 +197,6 @@ canvas.addEventListener("pointerdown", e => {
   activeDots.push({ x: e.clientX, y: e.clientY, t: now });
   if (!localTraces[id]) localTraces[id] = [];
   localTraces[id].push({ x: e.clientX, y: e.clientY, t: now });
-  localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
   sendTrace(id, localTraces[id]);
 });
 canvas.addEventListener("pointermove", e => {
@@ -205,7 +205,6 @@ canvas.addEventListener("pointermove", e => {
   const now = Date.now();
   if (!localTraces[id]) localTraces[id] = [];
   localTraces[id].push({ x: e.clientX, y: e.clientY, t: now });
-  localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
   sendTrace(id, localTraces[id]);
 });
 canvas.addEventListener("pointerup", () => {
