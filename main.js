@@ -25,8 +25,7 @@ const db = firebase.database();
 const userId = Math.random().toString(36).substring(2);
 const pointerRadius = 30;
 const DOT_SHOW_MS = 300;
-const TRACE_MAX_AGE = 1000; // ms, 軌跡持續時間
-const TRACE_MAX_LEN = 30;   // 最多保留多少點
+const TRACE_MAX_LEN = 50;   // 增加點數，讓殘影拖更長
 const activeTouchIds = new Set();
 
 function sendTrace(pointerId, trace) {
@@ -35,27 +34,17 @@ function sendTrace(pointerId, trace) {
     t: Date.now()
   });
 }
-
 function clearTrace(pointerId) {
   db.ref("pointers/" + userId + "_" + pointerId).remove();
 }
 
-// --- 本地保存自己的 trace ---
 const localTraces = {}; // pointerId: [{x, y, t}, ...]
-
-// --- 其他人的 trace 來自 firebase ---
 let activePointers = {};
-
-// --- 讀取 pointers (trace) ---
 db.ref("pointers").on("value", snapshot => {
   activePointers = snapshot.val() || {};
 });
 
-function distance(p1, p2) {
-  return Math.hypot(p2.x - p1.x, p2.y - p1.y);
-}
-
-// --- 畫軌跡：用插值畫很密的線條（pointer還在時整條線都不會消失） ---
+// 插值補點，讓線條不會有明顯間隔
 function drawTrace(trace, fadeOut = false) {
   if (!trace || trace.length < 2) return;
   for (let i = 1; i < trace.length; ++i) {
@@ -64,20 +53,24 @@ function drawTrace(trace, fadeOut = false) {
     const now = Date.now();
     let alpha = 1;
     if (fadeOut) {
-      alpha = Math.max(0, 1 - (now - p2.t) / TRACE_MAX_AGE);
+      alpha = Math.max(0, 1 - (now - p2.t) / 1000); // 殘影才淡出
     }
-    // 插值：距離大於10px就補點
-    const steps = Math.ceil(distance(p1, p2) / 10);
-    for (let s = 0; s <= steps; ++s) {
+    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+    ctx.lineWidth = pointerRadius * 2;
+
+    // 插值補點
+    const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    const steps = Math.ceil(dist / 8); // 距離大於8px就補點
+    let lastX = p1.x, lastY = p1.y;
+    for (let s = 1; s <= steps; ++s) {
       const t = s / steps;
       const x = p1.x * (1 - t) + p2.x * t;
       const y = p1.y * (1 - t) + p2.y * t;
-      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
-      ctx.lineWidth = pointerRadius * 2 * alpha;
       ctx.beginPath();
-      ctx.moveTo(x, y);
+      ctx.moveTo(lastX, lastY);
       ctx.lineTo(x, y);
       ctx.stroke();
+      lastX = x; lastY = y;
     }
   }
 }
@@ -93,26 +86,22 @@ function drawDot(x, y, alpha = 1) {
   ctx.fill();
 }
 
-// --- 讓畫布慢慢淡出 ---
+// 讓畫布慢慢淡出
 function fadeCanvas() {
   ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-// --- 本地離線的 trace 也要淡出 ---
 let fadingTraces = []; // [{trace: [...], tEnd: time}]
-
-// --- 本地點下產生的圓點 ---
 let activeDots = []; // {x, y, t}
 
 function animate() {
   fadeCanvas();
 
-  // 1. 畫所有來自 firebase 的 trace（不淡出）
+  // 活動中的 pointer（所有指頭/滑鼠），全畫出來，永不淡出
   for (const id in activePointers) {
     const pointer = activePointers[id];
     if (!pointer.trace) continue;
-    // 這裡不過濾，只要 pointer 還在，整條線都會保留
     const trace = pointer.trace.map(p => ({
       x: p.x * canvas.width,
       y: p.y * canvas.height,
@@ -121,13 +110,13 @@ function animate() {
     drawTrace(trace, false);
   }
 
-  // 2. 畫自己本地 fading traces
-  fadingTraces = fadingTraces.filter(ft => Date.now() - ft.endTime < TRACE_MAX_AGE);
+  // fadingTraces: 手指離開後才淡出
+  fadingTraces = fadingTraces.filter(ft => Date.now() - ft.endTime < 1000);
   for (const ft of fadingTraces) {
     drawTrace(ft.trace, true);
   }
 
-  // 3. 畫自己本地圓點
+  // 畫點
   const now = Date.now();
   activeDots = activeDots.filter(dot => now - dot.t < DOT_SHOW_MS);
   for (const dot of activeDots) {
@@ -139,8 +128,9 @@ function animate() {
 }
 animate();
 
-// --- 觸控（多指） ---
+// --- 多指觸控專用 ---
 function handleTouchMove(e) {
+  e.preventDefault();
   const touches = e.touches ? Array.from(e.touches) : [];
   const seen = new Set();
   const now = Date.now();
@@ -150,15 +140,12 @@ function handleTouchMove(e) {
     seen.add(id);
     activeTouchIds.add(id);
 
-    // push to localTraces
     if (!localTraces[id]) localTraces[id] = [];
     localTraces[id].push({ x: t.clientX, y: t.clientY, t: now });
     if (localTraces[id].length > TRACE_MAX_LEN) localTraces[id].shift();
-
     sendTrace(id, localTraces[id]);
   });
 
-  // 清掉不在上的指頭
   activeTouchIds.forEach(id => {
     if (!seen.has(id)) {
       if (localTraces[id]) {
@@ -173,30 +160,29 @@ function handleTouchMove(e) {
     }
   });
 }
-
-// 在 touchstart 加入圓點
 canvas.addEventListener("touchstart", function(e) {
+  e.preventDefault();
   const touches = e.touches ? Array.from(e.touches) : [];
   const now = Date.now();
   touches.forEach(t => {
     activeDots.push({ x: t.clientX, y: t.clientY, t: now });
   });
   handleTouchMove(e);
-});
-canvas.addEventListener("touchmove", handleTouchMove);
-canvas.addEventListener("touchend", handleTouchMove);
-canvas.addEventListener("touchcancel", handleTouchMove);
+}, { passive: false });
+canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
+canvas.addEventListener("touchend", handleTouchMove, { passive: false });
+canvas.addEventListener("touchcancel", handleTouchMove, { passive: false });
 
-// 滑鼠單點邏輯
+// --- 滑鼠/觸控筆專用 ---
 let mouseDown = false;
 canvas.addEventListener("pointerdown", e => {
   mouseDown = true;
   const id = "mouse";
   const now = Date.now();
-  // 新增圓點
   activeDots.push({ x: e.clientX, y: e.clientY, t: now });
   if (!localTraces[id]) localTraces[id] = [];
   localTraces[id].push({ x: e.clientX, y: e.clientY, t: now });
+  if (localTraces[id].length > TRACE_MAX_LEN) localTraces[id].shift();
   sendTrace(id, localTraces[id]);
 });
 canvas.addEventListener("pointermove", e => {
@@ -205,6 +191,7 @@ canvas.addEventListener("pointermove", e => {
   const now = Date.now();
   if (!localTraces[id]) localTraces[id] = [];
   localTraces[id].push({ x: e.clientX, y: e.clientY, t: now });
+  if (localTraces[id].length > TRACE_MAX_LEN) localTraces[id].shift();
   sendTrace(id, localTraces[id]);
 });
 canvas.addEventListener("pointerup", () => {
