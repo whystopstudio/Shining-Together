@@ -2,7 +2,6 @@
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 resizeCanvas();
-
 window.addEventListener('resize', resizeCanvas);
 function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -58,7 +57,8 @@ db.ref("pointers").on("value", snapshot => {
   activePoints = snapshot.val() || {};
 });
 
-function addFadingPoint(id, x, y) {
+function addFadingPoint(x, y) {
+  const id = `${Math.random().toString(36).slice(2)}_${Date.now()}`;
   fadingPoints[id] = {
     x,
     y,
@@ -77,13 +77,12 @@ function handleTouchMove(e) {
     activeTouchIds.add(t.identifier);
   });
 
-  // remove inactive
   [...activeTouchIds].forEach(id => {
     if (!seen.has(id)) {
       const pointerKey = userId + "_" + id;
       if (activePoints[pointerKey]) {
         const p = activePoints[pointerKey];
-        addFadingPoint(id, p.x, p.y);
+        addFadingPoint(p.x, p.y);
       }
       clearPosition(id);
       activeTouchIds.delete(id);
@@ -108,7 +107,7 @@ canvas.addEventListener("pointerup", () => {
   const pointerKey = userId + "_mouse";
   if (activePoints[pointerKey]) {
     const p = activePoints[pointerKey];
-    addFadingPoint("mouse", p.x, p.y);
+    addFadingPoint(p.x, p.y);
   }
   clearPosition("mouse");
   mouseDown = false;
@@ -117,7 +116,7 @@ canvas.addEventListener("pointerleave", () => {
   const pointerKey = userId + "_mouse";
   if (activePoints[pointerKey]) {
     const p = activePoints[pointerKey];
-    addFadingPoint("mouse", p.x, p.y);
+    addFadingPoint(p.x, p.y);
   }
   clearPosition("mouse");
   mouseDown = false;
