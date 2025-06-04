@@ -51,23 +51,17 @@ db.ref("pointers").on("value", snapshot => {
   activePointers = snapshot.val() || {};
 });
 
-// --- 畫軌跡 ---
+// --- 畫軌跡，現在每一點畫一個圓，不連線 ---
 function drawTrace(trace, fadeOut = false) {
-  if (!trace || trace.length < 2) return;
-  for (let i = 1; i < trace.length; ++i) {
-    const p1 = trace[i - 1];
-    const p2 = trace[i];
-    const now = Date.now();
+  if (!trace || trace.length === 0) return;
+  const now = Date.now();
+  for (let i = 0; i < trace.length; ++i) {
+    const p = trace[i];
     let alpha = 1;
     if (fadeOut) {
-      alpha = Math.max(0, 1 - (now - p2.t) / TRACE_MAX_AGE);
+      alpha = Math.max(0, 1 - (now - p.t) / TRACE_MAX_AGE);
     }
-    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
-    ctx.lineWidth = pointerRadius * 2 * alpha;
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.stroke();
+    drawDot(p.x, p.y, alpha);
   }
 }
 
