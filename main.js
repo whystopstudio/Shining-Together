@@ -51,28 +51,42 @@ db.ref("pointers").on("value", snapshot => {
   activePointers = snapshot.val() || {};
 });
 
-// --- 畫軌跡，現在每一點畫一個圓，不連線 ---
-function drawTrace(trace, fadeOut = false) {
+// --- 畫軌跡 ---
+function drawTrace(trace, fadeOut = false, isActive = false) {
   if (!trace || trace.length === 0) return;
   const now = Date.now();
-  for (let i = 0; i < trace.length; ++i) {
+  const N = trace.length;
+  for (let i = 0; i < N; ++i) {
     const p = trace[i];
+    let ratio = (N === 1) ? 0 : i / (N - 1);
     let alpha = 1;
-    if (fadeOut) {
-      alpha = Math.max(0, 1 - (now - p.t) / TRACE_MAX_AGE);
+    let radius = pointerRadius;
+
+    if (isActive && i === N - 1) {
+      // 活躍點：最後一點始終全亮最大
+      alpha = 1;
+      radius = pointerRadius;
+    } else {
+      // 尾巴：越遠越細越淡
+      alpha = 0.55 * (1 - ratio) + 0.25;
+      radius = pointerRadius * (0.8 * (1 - ratio) + 0.25);
+      if (fadeOut) {
+        alpha *= Math.max(0, 1 - (now - p.t) / TRACE_MAX_AGE);
+      }
     }
-    drawDot(p.x, p.y, alpha);
+    drawDot(p.x, p.y, alpha, radius);
+    // 平滑化可在這補插值點（此處省略，可再升級）
   }
 }
 
 // --- 畫圓點 ---
-function drawDot(x, y, alpha = 1) {
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius);
+function drawDot(x, y, alpha = 1, radius = pointerRadius) {
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
   gradient.addColorStop(0, `rgba(255,255,255,${alpha})`);
   gradient.addColorStop(1, `rgba(255,255,255,0)`);
   ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.arc(x, y, pointerRadius, 0, 2 * Math.PI);
+  ctx.arc(x, y, radius, 0, 2 * Math.PI);
   ctx.fill();
 }
 
@@ -91,7 +105,7 @@ let activeDots = []; // {x, y, t}
 function animate() {
   fadeCanvas();
 
-  // 1. 畫所有來自 firebase 的 trace
+  // 1. 畫所有來自 firebase 的 trace（活著的，尾巴不淡出，最後一點始終發光）
   for (const id in activePointers) {
     const pointer = activePointers[id];
     if (!pointer.trace) continue;
@@ -102,13 +116,13 @@ function animate() {
         y: p.y * canvas.height,
         t: p.t
       }));
-    drawTrace(trace, true);
+    drawTrace(trace, false, true); // 活著的指標不淡出
   }
 
   // 2. 畫自己本地 fading traces
   fadingTraces = fadingTraces.filter(ft => Date.now() - ft.endTime < TRACE_MAX_AGE);
   for (const ft of fadingTraces) {
-    drawTrace(ft.trace, true);
+    drawTrace(ft.trace, true, false);
   }
 
   // 3. 畫自己本地圓點
