@@ -1,3 +1,4 @@
+
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 resizeCanvas();
@@ -31,7 +32,6 @@ function sendPosition(pointerId, x, y) {
     t: Date.now()
   });
 }
-
 function clearPosition(pointerId) {
   db.ref("pointers/" + userId + "_" + pointerId).remove();
 }
@@ -52,28 +52,64 @@ function fadeCanvas() {
 }
 
 let activePoints = {};
+let fadingPoints = {}; // {id: {x, y, start, duration}}
 
 db.ref("pointers").on("value", snapshot => {
   activePoints = snapshot.val() || {};
 });
 
+// 更新 fadingPoints：當 pointer 被 lift up，就開始記錄它淡出
+function updateFadingPoints(current) {
+  // 清除已經淡出結束的點
+  const now = Date.now();
+  for (const id in fadingPoints) {
+    if (now - fadingPoints[id].start > fadingPoints[id].duration) {
+      delete fadingPoints[id];
+    }
+  }
+  // 對比 activePoints 與 current: current 裡有但 activePoints 沒有，就加入 fading
+  for (const id in current) {
+    if (!(id in activePoints) && !(id in fadingPoints)) {
+      // 預設淡出 0.3 秒
+      fadingPoints[id] = {
+        x: current[id].x,
+        y: current[id].y,
+        start: Date.now(),
+        duration: 300
+      };
+    }
+  }
+}
+
+let lastAllPoints = {}; // 上一禎畫面所有點
+
 function animate() {
   fadeCanvas();
   const now = Date.now();
+  // 畫 activePoints（活著的都亮著）
   for (const id in activePoints) {
     const p = activePoints[id];
-    const age = now - (p.t || 0);
-    if (age < 300) {
-      const x = p.x * canvas.width;
-      const y = p.y * canvas.height;
-      const alpha = 1 - age / 300;
-      drawCircle(x, y, alpha);
-    }
+    const x = p.x * canvas.width;
+    const y = p.y * canvas.height;
+    drawCircle(x, y, 1);
+  }
+  // 畫 fadingPoints（逐漸淡出）
+  for (const id in fadingPoints) {
+    const f = fadingPoints[id];
+    const progress = Math.min(1, (now - f.start) / f.duration);
+    drawCircle(f.x * canvas.width, f.y * canvas.height, 1 - progress);
   }
   requestAnimationFrame(animate);
+  lastAllPoints = {...activePoints}; // 儲存上一輪
 }
 animate();
 
+// 監控 pointer 被 lift up 時記錄 fading
+setInterval(() => {
+  updateFadingPoints(lastAllPoints);
+}, 50);
+
+// --- 觸控事件 ---
 function handleTouchMove(e) {
   const touches = e.touches ? Array.from(e.touches) : [];
   const seen = new Set();
@@ -91,13 +127,25 @@ function handleTouchMove(e) {
     }
   });
 }
-
 canvas.addEventListener("touchstart", handleTouchMove);
 canvas.addEventListener("touchmove", handleTouchMove);
+canvas.addEventListener("touchend", handleTouchMove);
+canvas.addEventListener("touchcancel", handleTouchMove);
 
-canvas.addEventListener("pointerdown", e => sendPosition("mouse", e.clientX, e.clientY));
-canvas.addEventListener("pointermove", e => {
-  if (e.buttons > 0) sendPosition("mouse", e.clientX, e.clientY);
+// --- 滑鼠/觸控筆 ---
+let mouseDown = false;
+canvas.addEventListener("pointerdown", e => {
+  mouseDown = true;
+  sendPosition("mouse", e.clientX, e.clientY);
 });
-canvas.addEventListener("pointerup", () => clearPosition("mouse"));
-canvas.addEventListener("pointerleave", () => clearPosition("mouse"));
+canvas.addEventListener("pointermove", e => {
+  if (mouseDown || e.buttons > 0) sendPosition("mouse", e.clientX, e.clientY);
+});
+canvas.addEventListener("pointerup", () => {
+  clearPosition("mouse");
+  mouseDown = false;
+});
+canvas.addEventListener("pointerleave", () => {
+  clearPosition("mouse");
+  mouseDown = false;
+});
