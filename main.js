@@ -9,6 +9,7 @@ function resizeCanvas() {
     canvas.height = window.innerHeight;
 }
 
+// --- Firebase setup ---
 const firebaseConfig = {
   apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
   authDomain: "shining-together.firebaseapp.com",
@@ -23,100 +24,180 @@ const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
 const pointerRadius = 30;
+const TRACE_MAX_AGE = 1000; // ms, 軌跡持續時間
+const TRACE_MAX_LEN = 30;   // 最多保留多少點
 const activeTouchIds = new Set();
 
-function sendPosition(pointerId, x, y) {
+function sendTrace(pointerId, trace) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
-    x: x / canvas.width,
-    y: y / canvas.height,
-    t: Date.now(),
-    active: true
+    trace: trace.map(p => ({ x: p.x / canvas.width, y: p.y / canvas.height, t: p.t })),
+    t: Date.now()
   });
 }
 
-function clearPosition(pointerId) {
-  db.ref("pointers/" + userId + "_" + pointerId).set({
-    t: Date.now(),
-    active: false
-  });
+function clearTrace(pointerId) {
+  db.ref("pointers/" + userId + "_" + pointerId).remove();
 }
 
-function drawCircle(x, y, alpha = 1) {
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius);
-  gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
-  gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(x, y, pointerRadius, 0, 2 * Math.PI);
-  ctx.fill();
+// --- 本地保存自己的 trace ---
+const localTraces = {}; // pointerId: [{x, y, t}, ...]
+
+// --- 其他人的 trace 來自 firebase ---
+let activePointers = {};
+
+// --- 讀取 pointers (trace) ---
+db.ref("pointers").on("value", snapshot => {
+  activePointers = snapshot.val() || {};
+});
+
+// --- 畫軌跡 ---
+function drawTrace(trace, fadeOut = false) {
+  if (!trace || trace.length < 2) return;
+  for (let i = 1; i < trace.length; ++i) {
+    const p1 = trace[i - 1];
+    const p2 = trace[i];
+    const now = Date.now();
+    // 漸層透明（根據離現在多久）
+    let alpha = 1;
+    if (fadeOut) {
+      alpha = Math.max(0, 1 - (now - p2.t) / TRACE_MAX_AGE);
+    }
+    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+    ctx.lineWidth = pointerRadius * 2 * alpha;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+  }
 }
 
+// --- 讓畫布慢慢淡出 ---
 function fadeCanvas() {
-  ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-let activePoints = {};
-db.ref("pointers").on("value", snapshot => {
-  activePoints = snapshot.val() || {};
-});
+// --- 本地離線的 trace 也要淡出 ---
+let fadingTraces = []; // [{trace: [...], tEnd: time}]
 
 function animate() {
   fadeCanvas();
-  const now = Date.now();
-  for (const id in activePoints) {
-    const p = activePoints[id];
-    const x = p.x * canvas.width;
-    const y = p.y * canvas.height;
 
-    if (p.active) {
-      drawCircle(x, y, 1);
-    } else {
-      const age = now - (p.t || 0);
-      if (age < 300) {
-        const alpha = 1 - age / 300;
-        drawCircle(x, y, alpha);
-      } else {
-        // 主動刪除過期資料
-        db.ref("pointers/" + id).remove();
-      }
-    }
+  // 1. 畫所有來自 firebase 的 trace
+  for (const id in activePointers) {
+    const pointer = activePointers[id];
+    if (!pointer.trace) continue;
+    // 還原成實際座標
+    const trace = pointer.trace
+      .filter(p => Date.now() - p.t < TRACE_MAX_AGE)
+      .map(p => ({
+        x: p.x * canvas.width,
+        y: p.y * canvas.height,
+        t: p.t
+      }));
+    drawTrace(trace, true);
   }
+
+  // 2. 畫自己本地 fading traces（手指離開後繼續殘影）
+  fadingTraces = fadingTraces.filter(ft => {
+    // 保留還沒全數淡出的 trace
+    return Date.now() - ft.endTime < TRACE_MAX_AGE;
+  });
+  for (const ft of fadingTraces) {
+    drawTrace(ft.trace, true);
+  }
+
   requestAnimationFrame(animate);
 }
 animate();
 
-function handleTouchStart(e) {
-  const touches = Array.from(e.touches || []);
-  touches.forEach(t => {
-    sendPosition(t.identifier, t.clientX, t.clientY);
-  });
-}
-
+// --- 處理觸控（多指） ---
 function handleTouchMove(e) {
-  const touches = Array.from(e.touches || []);
+  const touches = e.touches ? Array.from(e.touches) : [];
   const seen = new Set();
+  const now = Date.now();
 
   touches.forEach(t => {
-    sendPosition(t.identifier, t.clientX, t.clientY);
-    seen.add(t.identifier);
-    activeTouchIds.add(t.identifier);
+    const id = t.identifier;
+    seen.add(id);
+    activeTouchIds.add(id);
+
+    // push to localTraces
+    if (!localTraces[id]) localTraces[id] = [];
+    localTraces[id].push({ x: t.clientX, y: t.clientY, t: now });
+    // 只保留最近 TRACE_MAX_AGE 內的資料點
+    localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
+    if (localTraces[id].length > TRACE_MAX_LEN) localTraces[id].shift();
+
+    sendTrace(id, localTraces[id]);
   });
 
+  // 清掉不在上的指頭
   activeTouchIds.forEach(id => {
     if (!seen.has(id)) {
-      clearPosition(id);
+      // 殘影處理：本地保存最後一段 trace
+      if (localTraces[id]) {
+        fadingTraces.push({
+          trace: localTraces[id].map(p => ({...p})),
+          endTime: now
+        });
+      }
+      clearTrace(id);
+      delete localTraces[id];
       activeTouchIds.delete(id);
     }
   });
 }
 
-canvas.addEventListener("touchstart", handleTouchStart);
+canvas.addEventListener("touchstart", handleTouchMove);
 canvas.addEventListener("touchmove", handleTouchMove);
 
-canvas.addEventListener("pointerdown", e => sendPosition("mouse", e.clientX, e.clientY));
-canvas.addEventListener("pointermove", e => {
-  if (e.buttons > 0) sendPosition("mouse", e.clientX, e.clientY);
+canvas.addEventListener("touchend", handleTouchMove);
+canvas.addEventListener("touchcancel", handleTouchMove);
+
+// --- 滑鼠單點邏輯 ---
+let mouseDown = false;
+canvas.addEventListener("pointerdown", e => {
+  mouseDown = true;
+  const id = "mouse";
+  const now = Date.now();
+  if (!localTraces[id]) localTraces[id] = [];
+  localTraces[id].push({ x: e.clientX, y: e.clientY, t: now });
+  localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
+  sendTrace(id, localTraces[id]);
 });
-canvas.addEventListener("pointerup", () => clearPosition("mouse"));
-canvas.addEventListener("pointerleave", () => clearPosition("mouse"));
+canvas.addEventListener("pointermove", e => {
+  if (!mouseDown) return;
+  const id = "mouse";
+  const now = Date.now();
+  if (!localTraces[id]) localTraces[id] = [];
+  localTraces[id].push({ x: e.clientX, y: e.clientY, t: now });
+  localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
+  sendTrace(id, localTraces[id]);
+});
+canvas.addEventListener("pointerup", () => {
+  mouseDown = false;
+  const id = "mouse";
+  const now = Date.now();
+  if (localTraces[id]) {
+    fadingTraces.push({
+      trace: localTraces[id].map(p => ({...p})),
+      endTime: now
+    });
+  }
+  clearTrace(id);
+  delete localTraces[id];
+});
+canvas.addEventListener("pointerleave", () => {
+  mouseDown = false;
+  const id = "mouse";
+  const now = Date.now();
+  if (localTraces[id]) {
+    fadingTraces.push({
+      trace: localTraces[id].map(p => ({...p})),
+      endTime: now
+    });
+  }
+  clearTrace(id);
+  delete localTraces[id];
+});
