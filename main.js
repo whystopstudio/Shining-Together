@@ -1,11 +1,12 @@
+
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-resizeCanvas();
 
+resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 }
 
 const firebaseConfig = {
@@ -23,6 +24,7 @@ const db = firebase.database();
 const userId = Math.random().toString(36).substring(2);
 const pointerRadius = 30;
 const activeTouchIds = new Set();
+const touchIntervals = {};
 
 function sendPosition(pointerId, x, y) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
@@ -74,28 +76,44 @@ function animate() {
 }
 animate();
 
-function handleTouchMove(e) {
-  const touches = e.touches ? Array.from(e.touches) : [];
-  const seen = new Set();
+function handleTouchStart(e) {
+  Array.from(e.changedTouches).forEach(t => {
+    const id = t.identifier;
+    sendPosition(id, t.clientX, t.clientY);
+    activeTouchIds.add(id);
 
-  touches.forEach(t => {
-    sendPosition(t.identifier, t.clientX, t.clientY);
-    seen.add(t.identifier);
-    activeTouchIds.add(t.identifier);
-  });
-
-  activeTouchIds.forEach(id => {
-    if (!seen.has(id)) {
-      clearPosition(id);
-      activeTouchIds.delete(id);
+    if (!touchIntervals[id]) {
+      touchIntervals[id] = setInterval(() => {
+        sendPosition(id, t.clientX, t.clientY);
+      }, 100);
     }
   });
 }
 
-canvas.addEventListener("touchstart", handleTouchMove);
-canvas.addEventListener("touchmove", handleTouchMove);
+function handleTouchMove(e) {
+  Array.from(e.touches).forEach(t => {
+    sendPosition(t.identifier, t.clientX, t.clientY);
+  });
+}
 
-canvas.addEventListener("pointerdown", e => sendPosition("mouse", e.clientX, e.clientY));
+function handleTouchEnd(e) {
+  Array.from(e.changedTouches).forEach(t => {
+    const id = t.identifier;
+    clearPosition(id);
+    activeTouchIds.delete(id);
+    clearInterval(touchIntervals[id]);
+    delete touchIntervals[id];
+  });
+}
+
+canvas.addEventListener("touchstart", handleTouchStart);
+canvas.addEventListener("touchmove", handleTouchMove);
+canvas.addEventListener("touchend", handleTouchEnd);
+canvas.addEventListener("touchcancel", handleTouchEnd);
+
+canvas.addEventListener("pointerdown", e => {
+  sendPosition("mouse", e.clientX, e.clientY);
+});
 canvas.addEventListener("pointermove", e => {
   if (e.buttons > 0) sendPosition("mouse", e.clientX, e.clientY);
 });
