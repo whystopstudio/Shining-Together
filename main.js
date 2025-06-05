@@ -29,8 +29,7 @@ const activeTouchIds = new Set();
 function sendPosition(pointerId, x, y) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
     x: x / canvas.width,
-    y: y / canvas.height,
-    t: Date.now()
+    y: y / canvas.height
   });
 }
 
@@ -61,16 +60,11 @@ db.ref("pointers").on("value", snapshot => {
 
 function animate() {
   fadeCanvas();
-  const now = Date.now();
   for (const id in activePoints) {
     const p = activePoints[id];
-    const age = now - (p.t || 0);
-    if (age < 300) {
-      const x = p.x * canvas.width;
-      const y = p.y * canvas.height;
-      const alpha = 1 - age / 300;
-      drawCircle(x, y, alpha);
-    }
+    const x = p.x * canvas.width;
+    const y = p.y * canvas.height;
+    drawCircle(x, y, 1);
   }
   requestAnimationFrame(animate);
 }
@@ -83,6 +77,7 @@ function handleTouchStart(e) {
     const y = t.clientY;
     lastTouchPos[id] = { x, y };
     activeTouchIds.add(id);
+    sendPosition(id, x, y);
   });
 }
 
