@@ -19,32 +19,15 @@ const firebaseConfig = {
   databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app/"
 };
 firebase.initializeApp(firebaseConfig);
-const connectedRef = firebase.database().ref(".info/connected");
-connectedRef.on("value", function(snap) {
-  if (snap.val() === true) {
-    // 為每一個 touch 設定 onDisconnect 移除
-    const ref = firebase.database().ref("pointers");
-    ref.once("value", snapshot => {
-      const val = snapshot.val() || {};
-      for (const key in val) {
-        if (key.startsWith(userId + "_")) {
-          firebase.database().ref("pointers/" + key).onDisconnect().remove();
-        }
-      }
-    });
-  }
-});
-const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
 const pointerRadius = 30;
-const lastTouchPos = {};
-const activeTouchIds = new Set();
 
 function sendPosition(pointerId, x, y) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
     x: x / canvas.width,
-    y: y / canvas.height
+    y: y / canvas.height,
+    t: Date.now()
   });
 }
 
@@ -67,59 +50,48 @@ function fadeCanvas() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
+const db = firebase.database();
 let activePoints = {};
-
 db.ref("pointers").on("value", snapshot => {
   activePoints = snapshot.val() || {};
 });
 
 function animate() {
   fadeCanvas();
+  const now = Date.now();
   for (const id in activePoints) {
     const p = activePoints[id];
-    const x = p.x * canvas.width;
-    const y = p.y * canvas.height;
-    if (!isNaN(x) && !isNaN(y)) drawCircle(x, y, 1);
+    const age = now - (p.t || 0);
+    if (age < 10000 && !isNaN(p.x) && !isNaN(p.y)) {
+      const x = p.x * canvas.width;
+      const y = p.y * canvas.height;
+      drawCircle(x, y, 1);
+    }
   }
   requestAnimationFrame(animate);
 }
 animate();
 
-function handleTouchStart(e) {
+canvas.addEventListener("touchstart", e => {
   Array.from(e.changedTouches).forEach(t => {
-    const id = t.identifier;
-    const x = t.clientX;
-    const y = t.clientY;
-    lastTouchPos[id] = { x, y };
-    activeTouchIds.add(id);
-    sendPosition(id, x, y);
+    sendPosition(t.identifier, t.clientX, t.clientY);
   });
-}
-
-function handleTouchMove(e) {
+});
+canvas.addEventListener("touchmove", e => {
   Array.from(e.touches).forEach(t => {
-    const id = t.identifier;
-    const x = t.clientX;
-    const y = t.clientY;
-    lastTouchPos[id] = { x, y };
-    sendPosition(id, x, y);
+    sendPosition(t.identifier, t.clientX, t.clientY);
   });
-}
-
-function handleTouchEnd(e) {
+});
+canvas.addEventListener("touchend", e => {
   Array.from(e.changedTouches).forEach(t => {
-    const id = t.identifier;
-    clearPosition(id);
-    activeTouchIds.delete(id);
-    delete lastTouchPos[id];
+    clearPosition(t.identifier);
   });
-}
-
-canvas.addEventListener("touchstart", handleTouchStart);
-canvas.addEventListener("touchmove", handleTouchMove);
-canvas.addEventListener("touchend", handleTouchEnd);
-canvas.addEventListener("touchcancel", handleTouchEnd);
-
+});
+canvas.addEventListener("touchcancel", e => {
+  Array.from(e.changedTouches).forEach(t => {
+    clearPosition(t.identifier);
+  });
+});
 canvas.addEventListener("pointerdown", e => {
   sendPosition("mouse", e.clientX, e.clientY);
 });
@@ -128,3 +100,17 @@ canvas.addEventListener("pointermove", e => {
 });
 canvas.addEventListener("pointerup", () => clearPosition("mouse"));
 canvas.addEventListener("pointerleave", () => clearPosition("mouse"));
+
+firebase.database().ref(".info/connected").on("value", function(snap) {
+  if (snap.val() === true) {
+    const ref = firebase.database().ref("pointers");
+    ref.once("value", snapshot => {
+      const val = snapshot.val() || {};
+      for (const key in val) {
+        if (key.startsWith(userId + "_")) {
+          firebase.database().ref("pointers/" + key).onDisconnect().remove();
+        }
+      }
+    });
+  }
+});
