@@ -128,17 +128,17 @@ function handleTouchMove(e) {
   });
 
   activeTouchIds.forEach(id => {
-    clearInterval(touchIntervals[id]);
-    delete touchIntervals[id];
+    clearInterval(touchIntervals[pointerId]);
+    delete touchIntervals[pointerId];
     if (!seen.has(id)) {
-      if (localTraces[id]) {
+      if (localTraces[pointerId]) {
         fadingTraces.push({
           trace: localTraces[id].map(p => ({...p})),
           endTime: now
         });
       }
-      clearTrace(id);
-      delete localTraces[id];
+      clearTrace(pointerId);
+      delete localTraces[pointerId];
       activeTouchIds.delete(id);
     }
   });
@@ -198,28 +198,28 @@ canvas.addEventListener("pointermove", e => {
 canvas.addEventListener("pointerup", () => {
   const id = "mouse";
   const now = Date.now();
-  if (localTraces[id]) {
+  if (localTraces[pointerId]) {
     fadingTraces.push({
       trace: localTraces[id].map(p => ({...p})),
       endTime: now
     });
   }
-  clearTrace(id);
-  delete localTraces[id];
+  clearTrace(pointerId);
+  delete localTraces[pointerId];
   mouseDown = false;
   clearInterval(mouseInterval);
 });
 canvas.addEventListener("pointerleave", () => {
   const id = "mouse";
   const now = Date.now();
-  if (localTraces[id]) {
+  if (localTraces[pointerId]) {
     fadingTraces.push({
       trace: localTraces[id].map(p => ({...p})),
       endTime: now
     });
   }
-  clearTrace(id);
-  delete localTraces[id];
+  clearTrace(pointerId);
+  delete localTraces[pointerId];
   mouseDown = false;
   clearInterval(mouseInterval);
 });
