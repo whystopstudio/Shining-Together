@@ -98,11 +98,15 @@ function handleTouchMove(e) {
 function handleTouchEnd(e) {
   Array.from(e.changedTouches).forEach(t => {
     const id = t.identifier;
-    clearPosition(id);
-    activeTouchIds.delete(id);
     clearInterval(touchIntervals[id]);
     delete touchIntervals[id];
   });
+
+  // 統一清除所有 activeTouchIds（防殘留）
+  activeTouchIds.forEach(id => {
+    clearPosition(id);
+  });
+  activeTouchIds.clear();
 }
 
 canvas.addEventListener("touchstart", handleTouchStart);
