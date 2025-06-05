@@ -1,4 +1,3 @@
-
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 resizeCanvas();
@@ -22,16 +21,14 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
-const pointerRadius = 20;
+const pointerRadius = 30;
 const activeTouchIds = new Set();
-const touchIntervals = {};
 
 function sendPosition(pointerId, x, y) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
     x: x / canvas.width,
     y: y / canvas.height,
-    t: Date.now(),
-    uid: userId
+    t: Date.now()
   });
 }
 
@@ -40,19 +37,18 @@ function clearPosition(pointerId) {
 }
 
 function drawCircle(x, y, alpha = 1) {
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius * 1.5);
-  gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha * 1.2})`);
-  gradient.addColorStop(0.3, `rgba(255, 255, 255, ${alpha * 0.6})`);
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius);
+  gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
   gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
   ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.arc(x, y, pointerRadius * 1.5, 0, 2 * Math.PI);
+  ctx.arc(x, y, pointerRadius, 0, 2 * Math.PI);
   ctx.fill();
 }
 
-// 改為清空畫布（無殘影）
 function fadeCanvas() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 let activePoints = {};
@@ -67,10 +63,10 @@ function animate() {
   for (const id in activePoints) {
     const p = activePoints[id];
     const age = now - (p.t || 0);
-    if (age < 400 && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1) {
+    if (age < 300) {
       const x = p.x * canvas.width;
       const y = p.y * canvas.height;
-      const alpha = 1 - age / 400;
+      const alpha = 1 - age / 300;
       drawCircle(x, y, alpha);
     }
   }
@@ -78,55 +74,30 @@ function animate() {
 }
 animate();
 
-function handleTouchStart(e) {
-  Array.from(e.changedTouches).forEach(t => {
-    const id = t.identifier;
-    sendPosition(id, t.clientX, t.clientY);
-    activeTouchIds.add(id);
-
-    touchIntervals[id] = setInterval(() => {
-      sendPosition(id, t.clientX, t.clientY);
-    }, 100);
-  });
-}
-
 function handleTouchMove(e) {
-  Array.from(e.touches).forEach(t => {
-    sendPosition(t.identifier, t.clientX, t.clientY);
-  });
-}
+  const touches = e.touches ? Array.from(e.touches) : [];
+  const seen = new Set();
 
-function handleTouchEnd(e) {
-  Array.from(e.changedTouches).forEach(t => {
-    const id = t.identifier;
-    clearInterval(touchIntervals[id]);
-    delete touchIntervals[id];
+  touches.forEach(t => {
+    sendPosition(t.identifier, t.clientX, t.clientY);
+    seen.add(t.identifier);
+    activeTouchIds.add(t.identifier);
   });
 
   activeTouchIds.forEach(id => {
-    clearPosition(id);
+    if (!seen.has(id)) {
+      clearPosition(id);
+      activeTouchIds.delete(id);
+    }
   });
-  activeTouchIds.clear();
 }
 
-canvas.addEventListener("touchstart", handleTouchStart);
+canvas.addEventListener("touchstart", handleTouchMove);
 canvas.addEventListener("touchmove", handleTouchMove);
-canvas.addEventListener("touchend", handleTouchEnd);
-canvas.addEventListener("touchcancel", handleTouchEnd);
 
-let mouseInterval;
-canvas.addEventListener("pointerdown", e => {
-  sendPosition("mouse", e.clientX, e.clientY);
-  mouseInterval = setInterval(() => sendPosition("mouse", e.clientX, e.clientY), 100);
-});
+canvas.addEventListener("pointerdown", e => sendPosition("mouse", e.clientX, e.clientY));
 canvas.addEventListener("pointermove", e => {
   if (e.buttons > 0) sendPosition("mouse", e.clientX, e.clientY);
 });
-canvas.addEventListener("pointerup", () => {
-  clearPosition("mouse");
-  clearInterval(mouseInterval);
-});
-canvas.addEventListener("pointerleave", () => {
-  clearPosition("mouse");
-  clearInterval(mouseInterval);
-});
+canvas.addEventListener("pointerup", () => clearPosition("mouse"));
+canvas.addEventListener("pointerleave", () => clearPosition("mouse"));
