@@ -101,24 +101,30 @@ function handleTouchMove(e) {
   const now = Date.now();
 
   touches.forEach(t => {
-    const id = t.identifier;
+    const pointerId = t.identifier;
     const now = Date.now();
     if (!touchIntervals[id]) {
       touchIntervals[id] = setInterval(() => {
         if (localTraces[id] && localTraces[id].length > 0) {
           const last = localTraces[id][localTraces[id].length - 1];
-          sendTrace(id, localTraces[id]);
+          const last = localTraces[id][localTraces[id].length - 1];
+      localTraces[pointerId].push({ x: last.x, y: last.y, t: Date.now() });
+      localTraces[pointerId] = localTraces[id].slice(-TRACE_MAX_LEN);
+      sendTrace(pointerId, localTraces[pointerId]);
         }
       }, 100);
     }
     const id = t.identifier;
-    seen.add(id);
-    activeTouchIds.add(id);
-    if (!localTraces[id]) localTraces[id] = [];
-    localTraces[id].push({ x: t.clientX, y: t.clientY, t: now });
-    localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
+    seen.add(pointerId);
+    activeTouchIds.add(pointerId);
+    if (!localTraces[pointerId]) localTraces[pointerId] = [];
+    localTraces[pointerId].push({ x: t.clientX, y: t.clientY, t: now });
+    localTraces[pointerId] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
     if (localTraces[id].length > TRACE_MAX_LEN) localTraces[id].shift();
-    sendTrace(id, localTraces[id]);
+    const last = localTraces[id][localTraces[id].length - 1];
+      localTraces[pointerId].push({ x: last.x, y: last.y, t: Date.now() });
+      localTraces[pointerId] = localTraces[id].slice(-TRACE_MAX_LEN);
+      sendTrace(pointerId, localTraces[pointerId]);
   });
 
   activeTouchIds.forEach(id => {
@@ -144,23 +150,50 @@ canvas.addEventListener("touchend", handleTouchMove);
 canvas.addEventListener("touchcancel", handleTouchMove);
 
 let mouseDown = false;
+  clearInterval(mouseInterval);
+let mouseInterval;
 canvas.addEventListener("pointerdown", e => {
   mouseDown = true;
   const id = "mouse";
   const now = Date.now();
-  if (!localTraces[id]) localTraces[id] = [];
-  localTraces[id].push({ x: e.clientX, y: e.clientY, t: now });
-  localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
-  sendTrace(id, localTraces[id]);
+  if (!localTraces[pointerId]) localTraces[pointerId] = [];
+  localTraces[pointerId].push({ x: e.clientX, y: e.clientY, t: now });
+  localTraces[pointerId] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
+  const last = localTraces[id][localTraces[id].length - 1];
+      localTraces[pointerId].push({ x: last.x, y: last.y, t: Date.now() });
+      localTraces[pointerId] = localTraces[id].slice(-TRACE_MAX_LEN);
+      sendTrace(pointerId, localTraces[pointerId]);
+  mouseInterval = setInterval(() => {
+    if (localTraces[id] && localTraces[id].length > 0) {
+      const last = localTraces[id][localTraces[id].length - 1];
+      localTraces[pointerId].push({ x: last.x, y: last.y, t: Date.now() });
+      localTraces[pointerId] = localTraces[id].slice(-TRACE_MAX_LEN);
+      sendTrace(pointerId, localTraces[pointerId]);
+    }
+  }, 100);
+
+  mouseDown = true;
+  const id = "mouse";
+  const now = Date.now();
+  if (!localTraces[pointerId]) localTraces[pointerId] = [];
+  localTraces[pointerId].push({ x: e.clientX, y: e.clientY, t: now });
+  localTraces[pointerId] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
+  const last = localTraces[id][localTraces[id].length - 1];
+      localTraces[pointerId].push({ x: last.x, y: last.y, t: Date.now() });
+      localTraces[pointerId] = localTraces[id].slice(-TRACE_MAX_LEN);
+      sendTrace(pointerId, localTraces[pointerId]);
 });
 canvas.addEventListener("pointermove", e => {
   if (!mouseDown) return;
   const id = "mouse";
   const now = Date.now();
-  if (!localTraces[id]) localTraces[id] = [];
-  localTraces[id].push({ x: e.clientX, y: e.clientY, t: now });
-  localTraces[id] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
-  sendTrace(id, localTraces[id]);
+  if (!localTraces[pointerId]) localTraces[pointerId] = [];
+  localTraces[pointerId].push({ x: e.clientX, y: e.clientY, t: now });
+  localTraces[pointerId] = localTraces[id].filter(p => now - p.t < TRACE_MAX_AGE);
+  const last = localTraces[id][localTraces[id].length - 1];
+      localTraces[pointerId].push({ x: last.x, y: last.y, t: Date.now() });
+      localTraces[pointerId] = localTraces[id].slice(-TRACE_MAX_LEN);
+      sendTrace(pointerId, localTraces[pointerId]);
 });
 canvas.addEventListener("pointerup", () => {
   const id = "mouse";
@@ -174,6 +207,7 @@ canvas.addEventListener("pointerup", () => {
   clearTrace(id);
   delete localTraces[id];
   mouseDown = false;
+  clearInterval(mouseInterval);
 });
 canvas.addEventListener("pointerleave", () => {
   const id = "mouse";
@@ -187,4 +221,5 @@ canvas.addEventListener("pointerleave", () => {
   clearTrace(id);
   delete localTraces[id];
   mouseDown = false;
+  clearInterval(mouseInterval);
 });
