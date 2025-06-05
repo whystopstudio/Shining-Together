@@ -19,6 +19,21 @@ const firebaseConfig = {
   databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app/"
 };
 firebase.initializeApp(firebaseConfig);
+const connectedRef = firebase.database().ref(".info/connected");
+connectedRef.on("value", function(snap) {
+  if (snap.val() === true) {
+    // 為每一個 touch 設定 onDisconnect 移除
+    const ref = firebase.database().ref("pointers");
+    ref.once("value", snapshot => {
+      const val = snapshot.val() || {};
+      for (const key in val) {
+        if (key.startsWith(userId + "_")) {
+          firebase.database().ref("pointers/" + key).onDisconnect().remove();
+        }
+      }
+    });
+  }
+});
 const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
@@ -64,7 +79,7 @@ function animate() {
     const p = activePoints[id];
     const x = p.x * canvas.width;
     const y = p.y * canvas.height;
-    drawCircle(x, y, 1);
+    if (!isNaN(x) && !isNaN(y)) drawCircle(x, y, 1);
   }
   requestAnimationFrame(animate);
 }
@@ -113,15 +128,3 @@ canvas.addEventListener("pointermove", e => {
 });
 canvas.addEventListener("pointerup", () => clearPosition("mouse"));
 canvas.addEventListener("pointerleave", () => clearPosition("mouse"));
-
-
-window.addEventListener("beforeunload", () => {
-  db.ref("pointers").once("value", snapshot => {
-    const val = snapshot.val() || {};
-    for (const key in val) {
-      if (key.startsWith(userId + "_")) {
-        db.ref("pointers/" + key).remove();
-      }
-    }
-  });
-});
