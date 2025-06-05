@@ -30,7 +30,8 @@ function sendPosition(pointerId, x, y) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
     x: x / canvas.width,
     y: y / canvas.height,
-    t: Date.now()
+    t: Date.now(),
+    uid: userId
   });
 }
 
@@ -49,9 +50,9 @@ function drawCircle(x, y, alpha = 1) {
   ctx.fill();
 }
 
+// 改為清空畫布（無殘影）
 function fadeCanvas() {
-  ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 let activePoints = {};
@@ -102,7 +103,6 @@ function handleTouchEnd(e) {
     delete touchIntervals[id];
   });
 
-  // 統一清除所有 activeTouchIds（防殘留）
   activeTouchIds.forEach(id => {
     clearPosition(id);
   });
