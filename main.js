@@ -82,7 +82,6 @@ function handleTouchStart(e) {
     const x = t.clientX;
     const y = t.clientY;
     lastTouchPos[id] = { x, y };
-    sendPosition(id, x, y);
     activeTouchIds.add(id);
   });
 }
