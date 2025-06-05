@@ -22,7 +22,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
-const pointerRadius = 40;
+const pointerRadius = 20;
 const activeTouchIds = new Set();
 const touchIntervals = {};
 
@@ -39,13 +39,13 @@ function clearPosition(pointerId) {
 }
 
 function drawCircle(x, y, alpha = 1) {
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius * 1.8);
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius * 1.5);
   gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha * 1.2})`);
   gradient.addColorStop(0.3, `rgba(255, 255, 255, ${alpha * 0.6})`);
   gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
   ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.arc(x, y, pointerRadius * 1.8, 0, 2 * Math.PI);
+  ctx.arc(x, y, pointerRadius * 1.5, 0, 2 * Math.PI);
   ctx.fill();
 }
 
@@ -66,7 +66,7 @@ function animate() {
   for (const id in activePoints) {
     const p = activePoints[id];
     const age = now - (p.t || 0);
-    if (age < 400) {
+    if (age < 400 && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1) {
       const x = p.x * canvas.width;
       const y = p.y * canvas.height;
       const alpha = 1 - age / 400;
@@ -83,7 +83,6 @@ function handleTouchStart(e) {
     sendPosition(id, t.clientX, t.clientY);
     activeTouchIds.add(id);
 
-    // 持續發送位置
     touchIntervals[id] = setInterval(() => {
       sendPosition(id, t.clientX, t.clientY);
     }, 100);
@@ -111,7 +110,6 @@ canvas.addEventListener("touchmove", handleTouchMove);
 canvas.addEventListener("touchend", handleTouchEnd);
 canvas.addEventListener("touchcancel", handleTouchEnd);
 
-// Mouse fallback
 let mouseInterval;
 canvas.addEventListener("pointerdown", e => {
   sendPosition("mouse", e.clientX, e.clientY);
