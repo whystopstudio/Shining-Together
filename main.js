@@ -80,7 +80,6 @@ animate();
 function handleTouchStart(e) {
   Array.from(e.changedTouches).forEach(t => {
     const id = t.identifier;
-    sendPosition(id, t.clientX, t.clientY);
     lastTouchPos[id] = { x: t.clientX, y: t.clientY };
     activeTouchIds.add(id);
 
@@ -88,8 +87,7 @@ function handleTouchStart(e) {
       touchIntervals[id] = setInterval(() => {
         const pos = lastTouchPos[id];
         if (pos) sendPosition(id, pos.x, pos.y);
-        sendPosition(id, t.clientX, t.clientY);
-    lastTouchPos[id] = { x: t.clientX, y: t.clientY };
+        lastTouchPos[id] = { x: t.clientX, y: t.clientY };
       }, 100);
     }
   });
