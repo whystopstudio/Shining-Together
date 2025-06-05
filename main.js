@@ -113,3 +113,15 @@ canvas.addEventListener("pointermove", e => {
 });
 canvas.addEventListener("pointerup", () => clearPosition("mouse"));
 canvas.addEventListener("pointerleave", () => clearPosition("mouse"));
+
+
+window.addEventListener("beforeunload", () => {
+  db.ref("pointers").once("value", snapshot => {
+    const val = snapshot.val() || {};
+    for (const key in val) {
+      if (key.startsWith(userId + "_")) {
+        db.ref("pointers/" + key).remove();
+      }
+    }
+  });
+});
