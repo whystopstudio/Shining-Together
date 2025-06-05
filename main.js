@@ -23,9 +23,8 @@ const db = firebase.database();
 
 const userId = Math.random().toString(36).substring(2);
 const pointerRadius = 30;
-const activeTouchIds = new Set();
 const lastTouchPos = {};
-const touchIntervals = {};
+const activeTouchIds = new Set();
 
 function sendPosition(pointerId, x, y) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
@@ -80,23 +79,21 @@ animate();
 function handleTouchStart(e) {
   Array.from(e.changedTouches).forEach(t => {
     const id = t.identifier;
-    lastTouchPos[id] = { x: t.clientX, y: t.clientY };
+    const x = t.clientX;
+    const y = t.clientY;
+    lastTouchPos[id] = { x, y };
+    sendPosition(id, x, y);
     activeTouchIds.add(id);
-
-    if (!touchIntervals[id]) {
-      touchIntervals[id] = setInterval(() => {
-        const pos = lastTouchPos[id];
-        if (pos) sendPosition(id, pos.x, pos.y);
-        lastTouchPos[id] = { x: t.clientX, y: t.clientY };
-      }, 100);
-    }
   });
 }
 
 function handleTouchMove(e) {
   Array.from(e.touches).forEach(t => {
-    sendPosition(t.identifier, t.clientX, t.clientY);
-    lastTouchPos[t.identifier] = { x: t.clientX, y: t.clientY };
+    const id = t.identifier;
+    const x = t.clientX;
+    const y = t.clientY;
+    lastTouchPos[id] = { x, y };
+    sendPosition(id, x, y);
   });
 }
 
@@ -105,8 +102,6 @@ function handleTouchEnd(e) {
     const id = t.identifier;
     clearPosition(id);
     activeTouchIds.delete(id);
-    clearInterval(touchIntervals[id]);
-    delete touchIntervals[id];
     delete lastTouchPos[id];
   });
 }
