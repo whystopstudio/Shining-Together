@@ -23,39 +23,26 @@ firebase.initializeApp(firebaseConfig);
 const userId = Math.random().toString(36).substring(2);
 const pointerRadius = 30;
 
-let trailHistory = {};  // Record path history per pointer
-
 function sendPosition(pointerId, x, y) {
   db.ref("pointers/" + userId + "_" + pointerId).set({
     x: x / canvas.width,
     y: y / canvas.height,
     t: Date.now()
   });
-
-  // Save local history for ribbon effect
-  if (!trailHistory[pointerId]) trailHistory[pointerId] = [];
-  trailHistory[pointerId].push({x, y, t: Date.now()});
-  if (trailHistory[pointerId].length > 20) trailHistory[pointerId].shift();
 }
 
 function clearPosition(pointerId) {
   db.ref("pointers/" + userId + "_" + pointerId).remove();
-  delete trailHistory[pointerId];
 }
 
-function drawRibbonTrail(trail) {
-  for (let i = 0; i < trail.length - 1; i++) {
-    const p1 = trail[i];
-    const p2 = trail[i + 1];
-    const age = Date.now() - p1.t;
-    const alpha = 1 - i / trail.length;
-    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-    ctx.lineWidth = pointerRadius * alpha * 0.5;
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.stroke();
-  }
+function drawCircle(x, y, alpha = 1) {
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius);
+  gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+  gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(x, y, pointerRadius, 0, 2 * Math.PI);
+  ctx.fill();
 }
 
 function fadeCanvas() {
@@ -79,27 +66,11 @@ function animate() {
       const x = p.x * canvas.width;
       const y = p.y * canvas.height;
       drawCircle(x, y, 1);
-
-      // Use local pointerId for trail
-      const pointerId = id.split("_")[1];
-      if (trailHistory[pointerId]) {
-        drawRibbonTrail(trailHistory[pointerId]);
-      }
     }
   }
   requestAnimationFrame(animate);
 }
 animate();
-
-function drawCircle(x, y, alpha = 1) {
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius);
-  gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
-  gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(x, y, pointerRadius, 0, 2 * Math.PI);
-  ctx.fill();
-}
 
 canvas.addEventListener("touchstart", e => {
   Array.from(e.changedTouches).forEach(t => {
