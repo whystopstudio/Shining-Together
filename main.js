@@ -36,17 +36,25 @@ function clearPosition(pointerId) {
 }
 
 function drawCircle(x, y, alpha = 1) {
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, pointerRadius);
-  gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
-  gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(x, y, pointerRadius, 0, 2 * Math.PI);
-  ctx.fill();
+  const layers = 3;
+  for (let i = 0; i < layers; i++) {
+    const radius = pointerRadius - i * 6;
+    const opacity = alpha * (1 - i * 0.4);
+
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0.0, `rgba(255, 255, 255, ${opacity})`);
+    gradient.addColorStop(0.5, `rgba(120, 180, 255, ${opacity * 0.6})`);
+    gradient.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
+
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+    ctx.fill();
+  }
 }
 
 function fadeCanvas() {
-  ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.03)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
