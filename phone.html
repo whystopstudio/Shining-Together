@@ -47,7 +47,7 @@
   canvas { display: block; }
   #bottombar {
     position: fixed; bottom: 0; left: 0; right: 0; height: 52px;
-    display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 20px;
     background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
     border-top: 1px solid rgba(255,255,255,0.06);
   }
@@ -86,11 +86,11 @@
 </div>
 
 <div id="canvas"><canvas id="c"></canvas></div>
-<div id="bottombar"><span id="hint">用手指移動光點</span></div>
+<div id="bottombar"><span id="hint">用手指移動光點</span><span id="pcount" style="font-size:11px;letter-spacing:0.12em;color:rgba(255,255,255,0.3);">光點 0</span></div>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getDatabase, ref, set, remove, onDisconnect } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import { getDatabase, ref, set, remove, onDisconnect, onValue } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
@@ -115,6 +115,12 @@ let lastSend = 0;
 
 // auto-remove on disconnect
 onDisconnect(userRef).remove();
+
+// show live cursor count
+onValue(ref(db, 'cursors'), snap => {
+  const count = snap.val() ? Object.keys(snap.val()).length : 0;
+  document.getElementById('pcount').textContent = \`光點 \${count}\`;
+});
 
 document.getElementById('overlay').style.display = 'none';
 document.getElementById('status').textContent = '已連線';
