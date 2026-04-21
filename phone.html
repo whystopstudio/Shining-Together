@@ -116,9 +116,10 @@ let lastSend = 0;
 // auto-remove on disconnect
 onDisconnect(userRef).remove();
 
-// show live cursor count
+// show live cursor count + store all cursors
 onValue(ref(db, 'cursors'), snap => {
-  const count = snap.val() ? Object.keys(snap.val()).length : 0;
+  allCursors = snap.val() || {};
+  const count = Object.keys(allCursors).length;
   document.getElementById('pcount').textContent = `光點 ${count}`;
 });
 
@@ -139,6 +140,24 @@ window.addEventListener('resize', resize);
 resize();
 
 let glow = 0;
+let allCursors = {};
+
+const COLOR_MAP = {
+  red:   { h: '#ff3a3a', r: '255,58,58'  },
+  green: { h: '#3aff7a', r: '58,255,122' },
+  blue:  { h: '#3a7aff', r: '58,122,255' },
+};
+function drawOrb(px, py, hex, alpha, size) {
+  const g = ctx.createRadialGradient(px, py, 0, px, py, size);
+  g.addColorStop(0, hex + 'aa');
+  g.addColorStop(0.4, hex + '33');
+  g.addColorStop(1, 'transparent');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(px, py, size, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI*2); ctx.fill();
+}
+
 function draw(ts) {
   ctx.clearRect(0, 0, cw, ch);
   ctx.strokeStyle = 'rgba(255,255,255,0.03)';
@@ -146,21 +165,18 @@ function draw(ts) {
   for (let x = 0; x < cw; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,ch); ctx.stroke(); }
   for (let y = 0; y < ch; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cw,y); ctx.stroke(); }
 
+  // draw other cursors (dimmer)
+  for (const [id, cur] of Object.entries(allCursors)) {
+    if (id === userId) continue;
+    const px = cur.x * cw, py = cur.y * ch;
+    const hex = (COLOR_MAP[cur.color] || COLOR_MAP.red).h;
+    drawOrb(px, py, hex, 0.5, 45);
+  }
+
+  // draw own cursor (brighter)
   if (pos) {
-    const px = pos.x * cw, py = pos.y * ch;
     glow = Math.min(glow + 0.08, 1);
-    const g = ctx.createRadialGradient(px, py, 0, px, py, 80 * glow);
-    g.addColorStop(0, colorHex + 'aa');
-    g.addColorStop(0.4, colorHex + '33');
-    g.addColorStop(1, 'transparent');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(px, py, 80 * glow, 0, Math.PI*2); ctx.fill();
-    const core = ctx.createRadialGradient(px, py, 0, px, py, 14);
-    core.addColorStop(0, '#ffffff');
-    core.addColorStop(0.3, colorHex);
-    core.addColorStop(1, 'transparent');
-    ctx.fillStyle = core;
-    ctx.beginPath(); ctx.arc(px, py, 14, 0, Math.PI*2); ctx.fill();
+    drawOrb(pos.x * cw, pos.y * ch, colorHex, 1, 70 * glow);
   } else {
     glow = 0;
     const r = 28 + Math.sin(ts * 0.002) * 6;
