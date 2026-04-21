@@ -112,17 +112,31 @@ onValue(ref(db, 'cursors'), snap => {
   document.getElementById('cc').textContent = Object.keys(cursors).length;
   document.getElementById('cl').textContent = clusters.length;
 
-  // send to PD
+  // send to PD — per color
+  const colorPresent = { red: false, green: false, blue: false };
+
   for (const cur of Object.values(cursors)) {
-    const colorN = { red: 1, green: 2, blue: 3 }[cur.color] || 0;
-    const freqX  = (100 + cur.x * 1900).toFixed(1);
-    const freqY  = (100 + cur.y * 1900).toFixed(1);
-    sendToPD(`CURSOR ${cur.x.toFixed(4)} ${cur.y.toFixed(4)} ${colorN}`);
-    sendToPD(`FREQ ${freqX} ${freqY}`);
+    const c    = cur.color;
+    const freqX = (100 + cur.x * 1900).toFixed(1);
+    const freqY = (100 + cur.y * 1900).toFixed(1);
+    colorPresent[c] = true;
+
+    // 每個顏色各自發訊號
+    if (c === 'red')   sendToPD(`RED ${freqX} ${freqY}`);
+    if (c === 'green') sendToPD(`GREEN ${freqX} ${freqY}`);
+    if (c === 'blue')  sendToPD(`BLUE ${freqX} ${freqY}`);
   }
+
+  // 沒有該顏色時發 0 0，讓 PD timeout 靜音
+  if (!colorPresent.red)   sendToPD(`RED 0 0`);
+  if (!colorPresent.green) sendToPD(`GREEN 0 0`);
+  if (!colorPresent.blue)  sendToPD(`BLUE 0 0`);
+
+  // 聚集訊號
   if (clusters.length > 0) {
     clusters.forEach(cl => {
       const intensity = (cl.size / Math.max(Object.keys(cursors).length, 1)).toFixed(4);
+      const colorMix  = Object.keys(cl.colorCount).join('+');
       sendToPD(`CLUSTER ${cl.cx.toFixed(4)} ${cl.cy.toFixed(4)} ${intensity} ${cl.size}`);
     });
   } else {
