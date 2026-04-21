@@ -119,7 +119,7 @@ onDisconnect(userRef).remove();
 // show live cursor count
 onValue(ref(db, 'cursors'), snap => {
   const count = snap.val() ? Object.keys(snap.val()).length : 0;
-  document.getElementById('pcount').textContent = \`光點 \${count}\`;
+  document.getElementById('pcount').textContent = `光點 ${count}`;
 });
 
 document.getElementById('overlay').style.display = 'none';
