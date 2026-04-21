@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>光・聲 Display</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: monospace; }
+  canvas { display: block; }
+  #hud {
+    position: fixed; top: 16px; left: 16px;
+    font-size: 11px; letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.3); pointer-events: none; line-height: 1.8;
+  }
+  #clusterMsg {
+    position: fixed; bottom: 40px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px; letter-spacing: 0.2em;
+    color: rgba(255,255,255,0);
+    transition: color 0.4s; white-space: nowrap;
+    text-transform: uppercase;
+  }
+  #clusterMsg.show { color: rgba(255,255,255,0.7); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div>光點 <span id="cc">0</span></div>
+  <div>聚集 <span id="cl">0</span></div>
+</div>
+<div id="clusterMsg" id="cm"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
+  authDomain: "shining-together.firebaseapp.com",
+  databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "shining-together",
+  storageBucket: "shining-together.firebasestorage.app",
+  messagingSenderId: "322280033754",
+  appId: "1:322280033754:web:cc2137fbcf38226d7704e3"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let cw, ch;
+function resize() { cw = canvas.width = window.innerWidth; ch = canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+resize();
+
+const COLOR = {
+  red:   { h: '#ff3a3a', r: '255,58,58'   },
+  green: { h: '#3aff7a', r: '58,255,122'  },
+  blue:  { h: '#3a7aff', r: '58,122,255'  },
+};
+function ch_(c) { return (COLOR[c] || COLOR.red).h; }
+function cr_(c) { return (COLOR[c] || COLOR.red).r; }
+
+let cursors  = {};
+let clusters = [];
+
+// ── cluster detection ────────────────────────────
+const CLUSTER_RADIUS    = 0.15;
+const CLUSTER_MIN_COUNT = 2;
+
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+function findClusters(cur) {
+  const ids     = Object.keys(cur);
+  const visited = new Set();
+  const result  = [];
+  for (const id of ids) {
+    if (visited.has(id)) continue;
+    const group = [id]; visited.add(id);
+    for (const other of ids) {
+      if (visited.has(other)) continue;
+      if (dist(cur[id], cur[other]) < CLUSTER_RADIUS) { group.push(other); visited.add(other); }
+    }
+    if (group.length >= CLUSTER_MIN_COUNT) {
+      const cx = group.reduce((s, i) => s + cur[i].x, 0) / group.length;
+      const cy = group.reduce((s, i) => s + cur[i].y, 0) / group.length;
+      const colorCount = {};
+      group.forEach(i => { colorCount[cur[i].color] = (colorCount[cur[i].color] || 0) + 1; });
+      result.push({ members: group, cx, cy, colorCount, size: group.length });
+    }
+  }
+  return result;
+}
+
+// ── UDP bridge to PD (via local relay) ──────────────
+// display.html sends fetch to local relay on port 9001
+// which forwards UDP to PD on 9000
+function sendToPD(msg) {
+  fetch(`http://localhost:9001/pd?msg=${encodeURIComponent(msg)}`).catch(() => {});
+}
+
+// ── Firebase listener ────────────────────────────
+let prevClusterCount = 0;
+
+onValue(ref(db, 'cursors'), snap => {
+  cursors  = snap.val() || {};
+  clusters = findClusters(cursors);
+
+  document.getElementById('cc').textContent = Object.keys(cursors).length;
+  document.getElementById('cl').textContent = clusters.length;
+
+  // send to PD
+  for (const cur of Object.values(cursors)) {
+    const colorN = { red: 1, green: 2, blue: 3 }[cur.color] || 0;
+    const freqX  = (100 + cur.x * 1900).toFixed(1);
+    const freqY  = (100 + cur.y * 1900).toFixed(1);
+    sendToPD(`CURSOR ${cur.x.toFixed(4)} ${cur.y.toFixed(4)} ${colorN}`);
+    sendToPD(`FREQ ${freqX} ${freqY}`);
+  }
+  if (clusters.length > 0) {
+    clusters.forEach(cl => {
+      const intensity = (cl.size / Math.max(Object.keys(cursors).length, 1)).toFixed(4);
+      sendToPD(`CLUSTER ${cl.cx.toFixed(4)} ${cl.cy.toFixed(4)} ${intensity} ${cl.size}`);
+    });
+  } else {
+    sendToPD(`CLUSTER 0 0 0 0`);
+  }
+
+  // cluster message
+  if (clusters.length > prevClusterCount) {
+    const cl   = clusters[clusters.length - 1];
+    const zh   = { red: '紅', green: '綠', blue: '藍' };
+    const cols = Object.keys(cl.colorCount).map(c => zh[c] || c).join('・');
+    const el   = document.getElementById('clusterMsg');
+    el.textContent = `${cols} 聚集 × ${cl.size}`;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2500);
+  }
+  prevClusterCount = clusters.length;
+});
+
+// ── draw loop ────────────────────────────────────
+function draw() {
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(0, 0, cw, ch);
+
+  for (const [, cur] of Object.entries(cursors)) {
+    const px  = cur.x * cw, py = cur.y * ch;
+    const rgb = cr_(cur.color);
+    const g   = ctx.createRadialGradient(px, py, 0, px, py, 60);
+    g.addColorStop(0,   `rgba(${rgb},0.55)`);
+    g.addColorStop(0.5, `rgba(${rgb},0.12)`);
+    g.addColorStop(1,   'transparent');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(px, py, 60, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI*2); ctx.fill();
+  }
+
+  for (const cl of clusters) {
+    const px = cl.cx * cw, py = cl.cy * ch;
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(px, py, 60 + cl.size * 12, 0, Math.PI*2); ctx.stroke();
+    if (cl.members) {
+      for (let i = 0; i < cl.members.length; i++) {
+        const a = cursors[cl.members[i]]; if (!a) continue;
+        for (let j = i+1; j < cl.members.length; j++) {
+          const b = cursors[cl.members[j]]; if (!b) continue;
+          ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+          ctx.setLineDash([3,6]);
+          ctx.beginPath();
+          ctx.moveTo(a.x*cw, a.y*ch); ctx.lineTo(b.x*cw, b.y*ch);
+          ctx.stroke(); ctx.setLineDash([]);
+        }
+      }
+    }
+  }
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>光・聲</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root { --c: #ff4444; }
+  body {
+    background: #080808;
+    width: 100vw; height: 100dvh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    touch-action: none;
+    user-select: none;
+  }
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 52px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+    z-index: 10;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  #status {
+    font-size: 11px; letter-spacing: 0.15em;
+    color: rgba(255,255,255,0.35); text-transform: uppercase;
+  }
+  #status.connected { color: var(--c); }
+  #colorpicker { display: flex; gap: 10px; }
+  .coloropt {
+    width: 22px; height: 22px; border-radius: 50%;
+    cursor: pointer; border: 2px solid transparent;
+    transition: transform 0.2s, border-color 0.2s;
+  }
+  .coloropt.active { border-color: white; transform: scale(1.25); }
+  .coloropt:nth-child(1) { background: #ff3a3a; }
+  .coloropt:nth-child(2) { background: #3aff7a; }
+  .coloropt:nth-child(3) { background: #3a7aff; }
+  #canvas {
+    position: fixed; top: 52px; left: 0; right: 0; bottom: 52px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas { display: block; }
+  #bottombar {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 52px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  #hint { font-size: 11px; letter-spacing: 0.12em; color: rgba(255,255,255,0.2); }
+  #overlay {
+    position: fixed; inset: 0; background: #080808;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 24px; z-index: 100;
+  }
+  #overlay h1 { font-size: 28px; letter-spacing: 0.3em; color: rgba(255,255,255,0.8); font-weight: 300; }
+  #overlay p { font-size: 12px; color: rgba(255,255,255,0.3); letter-spacing: 0.1em; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 2px solid rgba(255,255,255,0.1);
+    border-top-color: var(--c); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <h1>光・聲</h1>
+  <div class="spinner"></div>
+  <p id="overlayMsg">連接中…</p>
+</div>
+
+<div id="topbar">
+  <span id="status">離線</span>
+  <div id="colorpicker">
+    <div class="coloropt active" onclick="setColor(this,'red','#ff3a3a')"></div>
+    <div class="coloropt"       onclick="setColor(this,'green','#3aff7a')"></div>
+    <div class="coloropt"       onclick="setColor(this,'blue','#3a7aff')"></div>
+  </div>
+</div>
+
+<div id="canvas"><canvas id="c"></canvas></div>
+<div id="bottombar"><span id="hint">用手指移動光點</span></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getDatabase, ref, set, remove, onDisconnect } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDsWLFW4QQUaRGgyqB7KnoCXKfqiuGhW8M",
+  authDomain: "shining-together.firebaseapp.com",
+  databaseURL: "https://shining-together-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "shining-together",
+  storageBucket: "shining-together.firebasestorage.app",
+  messagingSenderId: "322280033754",
+  appId: "1:322280033754:web:cc2137fbcf38226d7704e3"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+const userId  = 'u_' + Math.random().toString(36).slice(2, 8);
+const userRef = ref(db, `cursors/${userId}`);
+
+let color    = 'red';
+let colorHex = '#ff3a3a';
+let pos      = null;
+let lastSend = 0;
+
+// auto-remove on disconnect
+onDisconnect(userRef).remove();
+
+document.getElementById('overlay').style.display = 'none';
+document.getElementById('status').textContent = '已連線';
+document.getElementById('status').classList.add('connected');
+
+// ── canvas ──────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let cw, ch;
+function resize() {
+  const area = document.getElementById('canvas');
+  cw = canvas.width  = area.clientWidth;
+  ch = canvas.height = area.clientHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+let glow = 0;
+function draw(ts) {
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < cw; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,ch); ctx.stroke(); }
+  for (let y = 0; y < ch; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cw,y); ctx.stroke(); }
+
+  if (pos) {
+    const px = pos.x * cw, py = pos.y * ch;
+    glow = Math.min(glow + 0.08, 1);
+    const g = ctx.createRadialGradient(px, py, 0, px, py, 80 * glow);
+    g.addColorStop(0, colorHex + 'aa');
+    g.addColorStop(0.4, colorHex + '33');
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(px, py, 80 * glow, 0, Math.PI*2); ctx.fill();
+    const core = ctx.createRadialGradient(px, py, 0, px, py, 14);
+    core.addColorStop(0, '#ffffff');
+    core.addColorStop(0.3, colorHex);
+    core.addColorStop(1, 'transparent');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(px, py, 14, 0, Math.PI*2); ctx.fill();
+  } else {
+    glow = 0;
+    const r = 28 + Math.sin(ts * 0.002) * 6;
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.beginPath(); ctx.arc(cw/2, ch/2, r, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('觸碰畫面', cw/2, ch/2 + 4);
+    ctx.textAlign = 'left';
+  }
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+// ── touch ────────────────────────────────────────
+function getPos(e) {
+  const area  = document.getElementById('canvas');
+  const rect  = area.getBoundingClientRect();
+  const touch = e.touches ? e.touches[0] : e;
+  return {
+    x: Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (touch.clientY - rect.top)  / rect.height))
+  };
+}
+
+function onMove(e) {
+  e.preventDefault();
+  pos = getPos(e);
+  const now = Date.now();
+  if (now - lastSend >= 50) {
+    lastSend = now;
+    set(userRef, { x: pos.x, y: pos.y, color, ts: now });
+  }
+}
+
+function onEnd() {
+  pos = null;
+  remove(userRef);
+}
+
+canvas.addEventListener('touchstart',  onMove, { passive: false });
+canvas.addEventListener('touchmove',   onMove, { passive: false });
+canvas.addEventListener('touchend',    onEnd);
+canvas.addEventListener('mousedown',   onMove);
+canvas.addEventListener('mousemove',   e => { if (e.buttons) onMove(e); });
+canvas.addEventListener('mouseup',     onEnd);
+
+window.addEventListener('beforeunload', () => remove(userRef));
+
+// ── color picker ─────────────────────────────────
+window.setColor = function(el, name, hex) {
+  document.querySelectorAll('.coloropt').forEach(o => o.classList.remove('active'));
+  el.classList.add('active');
+  color    = name;
+  colorHex = hex;
+  document.documentElement.style.setProperty('--c', hex);
+};
+</script>
+</body>
+</html>
