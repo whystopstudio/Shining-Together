@@ -147,38 +147,63 @@ const COLOR_MAP = {
   green: { h: '#3aff7a', r: '58,255,122' },
   blue:  { h: '#3a7aff', r: '58,122,255' },
 };
-function drawOrb(px, py, hex, alpha, size) {
+function drawOrb(px, py, hex, size) {
   const g = ctx.createRadialGradient(px, py, 0, px, py, size);
-  g.addColorStop(0, hex + 'aa');
-  g.addColorStop(0.4, hex + '33');
-  g.addColorStop(1, 'transparent');
+  g.addColorStop(0,   hex + 'cc');
+  g.addColorStop(0.4, hex + '55');
+  g.addColorStop(1,   'transparent');
   ctx.fillStyle = g;
   ctx.beginPath(); ctx.arc(px, py, size, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#fff';
+}
+
+function drawCore(px, py) {
+  // white core dot — drawn in normal mode
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI*2); ctx.fill();
 }
 
 function draw(ts) {
-  ctx.clearRect(0, 0, cw, ch);
+  // clear to black
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#080808';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // grid
   ctx.strokeStyle = 'rgba(255,255,255,0.03)';
   ctx.lineWidth = 1;
   for (let x = 0; x < cw; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,ch); ctx.stroke(); }
   for (let y = 0; y < ch; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cw,y); ctx.stroke(); }
 
-  // draw other cursors (dimmer)
+  // additive blending — colours mix like light
+  ctx.globalCompositeOperation = 'lighter';
+
+  // other cursors
   for (const [id, cur] of Object.entries(allCursors)) {
     if (id === userId) continue;
-    const px = cur.x * cw, py = cur.y * ch;
+    const px  = cur.x * cw, py = cur.y * ch;
     const hex = (COLOR_MAP[cur.color] || COLOR_MAP.red).h;
-    drawOrb(px, py, hex, 0.5, 45);
+    drawOrb(px, py, hex, 50);
   }
 
-  // draw own cursor (brighter)
+  // own cursor
   if (pos) {
     glow = Math.min(glow + 0.08, 1);
-    drawOrb(pos.x * cw, pos.y * ch, colorHex, 1, 70 * glow);
+    drawOrb(pos.x * cw, pos.y * ch, colorHex, 75 * glow);
   } else {
     glow = 0;
+  }
+
+  // white core dots on top (normal blend)
+  for (const [id, cur] of Object.entries(allCursors)) {
+    if (id === userId) continue;
+    drawCore(cur.x * cw, cur.y * ch);
+  }
+  if (pos) drawCore(pos.x * cw, pos.y * ch);
+
+  // idle hint
+  if (!pos && Object.keys(allCursors).filter(id => id !== userId).length === 0) {
+    ctx.globalCompositeOperation = 'source-over';
     const r = 28 + Math.sin(ts * 0.002) * 6;
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.beginPath(); ctx.arc(cw/2, ch/2, r, 0, Math.PI*2); ctx.stroke();
@@ -188,6 +213,8 @@ function draw(ts) {
     ctx.fillText('觸碰畫面', cw/2, ch/2 + 4);
     ctx.textAlign = 'left';
   }
+
+  ctx.globalCompositeOperation = 'source-over';
   requestAnimationFrame(draw);
 }
 requestAnimationFrame(draw);

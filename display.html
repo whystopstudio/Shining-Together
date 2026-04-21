@@ -144,20 +144,27 @@ onValue(ref(db, 'cursors'), snap => {
 
 // ── draw loop ────────────────────────────────────
 function draw() {
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, cw, ch);
 
+  // additive blending for colour mixing
+  ctx.globalCompositeOperation = 'lighter';
   for (const [, cur] of Object.entries(cursors)) {
     const px  = cur.x * cw, py = cur.y * ch;
-    const rgb = cr_(cur.color);
-    const g   = ctx.createRadialGradient(px, py, 0, px, py, 60);
-    g.addColorStop(0,   `rgba(${rgb},0.55)`);
-    g.addColorStop(0.5, `rgba(${rgb},0.12)`);
+    const hex = ch_(cur.color);
+    const g   = ctx.createRadialGradient(px, py, 0, px, py, 70);
+    g.addColorStop(0,   hex + 'cc');
+    g.addColorStop(0.4, hex + '55');
     g.addColorStop(1,   'transparent');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(px, py, 60, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px, py, 70, 0, Math.PI*2); ctx.fill();
+  }
+  // white core dots
+  ctx.globalCompositeOperation = 'source-over';
+  for (const [, cur] of Object.entries(cursors)) {
     ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cur.x*cw, cur.y*ch, 5, 0, Math.PI*2); ctx.fill();
   }
 
   for (const cl of clusters) {
