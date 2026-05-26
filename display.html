@@ -177,109 +177,128 @@ onValue(ref(db, 'cursors'), snap => {
 });
 
 // ── draw loop ────────────────────────────────────
-// 每個 cursor 的動畫狀態（光暈大小平滑過渡）
-const glowState = {}; // id → current glow multiplier (0~1 smoothly)
+// 計算每個 cursor 的「親密度」：與最近其他 cursor 的距離
+// 距離越近 proximity 越高（0~1 連續值）
+const PROXIMITY_RANGE = 0.3; // 開始有反應的距離
+const glowSmooth = {};       // id → smoothed proximity value
+
+function getProximity(id, cur) {
+  let minDist = Infinity;
+  for (const [otherId, other] of Object.entries(cursors)) {
+    if (otherId === id) continue;
+    const d = Math.hypot(cur.x - other.x, cur.y - other.y);
+    if (d < minDist) minDist = d;
+  }
+  if (minDist >= PROXIMITY_RANGE) return 0;
+  // 距離 0 → proximity 1，距離 PROXIMITY_RANGE → proximity 0
+  return Math.pow(1 - minDist / PROXIMITY_RANGE, 1.5); // 指數讓靠近時加速
+}
 
 function draw(ts) {
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, cw, ch);
 
-  // ── additive blending for colour mixing ────────
+  const ids = Object.keys(cursors);
+
+  // ── 先算所有 cursor 之間的連線（additive） ────
   ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < ids.length; i++) {
+    const a = cursors[ids[i]]; if (!a) continue;
+    for (let j = i + 1; j < ids.length; j++) {
+      const b = cursors[ids[j]]; if (!b) continue;
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d >= PROXIMITY_RANGE) continue;
 
+      const strength = Math.pow(1 - d / PROXIMITY_RANGE, 2); // 0~1
+
+      // 發光寬連線
+      const ax = a.x * cw, ay = a.y * ch;
+      const bx = b.x * cw, by = b.y * ch;
+
+      ctx.strokeStyle = `rgba(255,255,255,${(strength * 0.15).toFixed(3)})`;
+      ctx.lineWidth = strength * 6;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
+      ctx.stroke();
+
+      // 細亮線
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = `rgba(255,255,255,${(strength * 0.4).toFixed(3)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+    }
+  }
+
+  // ── 光暈（additive blending）────────────────
   for (const [id, cur] of Object.entries(cursors)) {
-    const px  = cur.x * cw, py = cur.y * ch;
+    const px = cur.x * cw, py = cur.y * ch;
     const hex = ch_(cur.color);
-    const inCluster = clusterMembers.has(id);
 
-    // 平滑過渡 glow（靠近時慢慢變大，離開時慢慢縮小）
-    if (!glowState[id]) glowState[id] = 0;
-    const target = inCluster ? 1 : 0;
-    glowState[id] += (target - glowState[id]) * 0.08;
+    // 算 proximity 並平滑
+    const rawProx = getProximity(id, cur);
+    if (glowSmooth[id] === undefined) glowSmooth[id] = 0;
+    glowSmooth[id] += (rawProx - glowSmooth[id]) * 0.06; // 慢慢過渡
+    const prox = glowSmooth[id];
 
-    // 基礎半徑 70，cluster 時膨脹到 140，加上呼吸脈動
-    const pulse    = inCluster ? Math.sin(ts * 0.003) * 12 : 0;
-    const baseSize = 70;
-    const maxExtra = 70; // 最大額外膨脹
-    const radius   = baseSize + glowState[id] * maxExtra + pulse;
+    // 基礎半徑 60，最大膨脹到 180
+    const pulse  = prox > 0.1 ? Math.sin(ts * 0.003 + cur.x * 10) * (prox * 15) : 0;
+    const radius = 60 + prox * 120 + pulse;
 
-    // 外層光暈
+    // 主光暈
     const g = ctx.createRadialGradient(px, py, 0, px, py, radius);
-    g.addColorStop(0,   hex + 'cc');
-    g.addColorStop(0.3, hex + '66');
-    g.addColorStop(0.6, hex + '22');
-    g.addColorStop(1,   'transparent');
+    const coreAlpha = Math.round(200 + prox * 55).toString(16); // cc ~ ff
+    const midAlpha  = Math.round(50 + prox * 80).toString(16).padStart(2, '0');
+    g.addColorStop(0,    hex + coreAlpha);
+    g.addColorStop(0.25, hex + midAlpha);
+    g.addColorStop(0.6,  hex + '11');
+    g.addColorStop(1,    'transparent');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(px, py, radius, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px, py, radius, 0, Math.PI * 2); ctx.fill();
 
-    // cluster 時多一層更亮的內核光
-    if (glowState[id] > 0.1) {
-      const g2 = ctx.createRadialGradient(px, py, 0, px, py, 30);
-      const alpha = Math.round(glowState[id] * 180).toString(16).padStart(2, '0');
-      g2.addColorStop(0, '#ffffff' + alpha);
+    // 靠近時：白色內核光暈（越近越亮）
+    if (prox > 0.05) {
+      const g2 = ctx.createRadialGradient(px, py, 0, px, py, 25 + prox * 20);
+      const whiteAlpha = Math.round(prox * 200).toString(16).padStart(2, '0');
+      g2.addColorStop(0, '#ffffff' + whiteAlpha);
       g2.addColorStop(1, 'transparent');
       ctx.fillStyle = g2;
-      ctx.beginPath(); ctx.arc(px, py, 30, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(px, py, 25 + prox * 20, 0, Math.PI * 2); ctx.fill();
     }
   }
 
-  // ── white core dots ────────────────────────────
+  // ── core dots（normal blend）────────────────
   ctx.globalCompositeOperation = 'source-over';
   for (const [id, cur] of Object.entries(cursors)) {
-    const inCluster = clusterMembers.has(id);
-    const coreSize = inCluster ? 7 : 5;
-    ctx.fillStyle = inCluster ? '#fff' : 'rgba(255,255,255,0.8)';
-    ctx.beginPath(); ctx.arc(cur.x*cw, cur.y*ch, coreSize, 0, Math.PI*2); ctx.fill();
+    const prox = glowSmooth[id] || 0;
+    const coreSize = 4 + prox * 4; // 4~8
+    const brightness = 0.7 + prox * 0.3;
+    ctx.fillStyle = `rgba(255,255,255,${brightness.toFixed(2)})`;
+    ctx.beginPath(); ctx.arc(cur.x * cw, cur.y * ch, coreSize, 0, Math.PI * 2); ctx.fill();
   }
 
-  // ── cluster 視覺效果 ──────────────────────────
+  // ── cluster 圓環 ──────────────────────────────
   for (const cl of clusters) {
     const px = cl.cx * cw, py = cl.cy * ch;
-
-    // 外圈呼吸脈動
     const ringPulse = Math.sin(ts * 0.002) * 8;
-    const ringR = 60 + cl.size * 16 + ringPulse;
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    const ringR = 50 + cl.size * 18 + ringPulse;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
     ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(px, py, ringR, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(px, py, ringR, 0, Math.PI * 2); ctx.stroke();
 
-    // 第二圈（更大更淡）
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(px, py, ringR + 20, 0, Math.PI*2); ctx.stroke();
-
-    // 成員之間的連線（更亮、實線 + 發光）
-    if (cl.members) {
-      for (let i = 0; i < cl.members.length; i++) {
-        const a = cursors[cl.members[i]]; if (!a) continue;
-        for (let j = i+1; j < cl.members.length; j++) {
-          const b = cursors[cl.members[j]]; if (!b) continue;
-
-          // 發光底線
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-          ctx.lineWidth = 4;
-          ctx.setLineDash([]);
-          ctx.beginPath();
-          ctx.moveTo(a.x*cw, a.y*ch); ctx.lineTo(b.x*cw, b.y*ch);
-          ctx.stroke();
-
-          // 細連線
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(a.x*cw, a.y*ch); ctx.lineTo(b.x*cw, b.y*ch);
-          ctx.stroke();
-        }
-      }
-    }
+    ctx.beginPath(); ctx.arc(px, py, ringR + 25, 0, Math.PI * 2); ctx.stroke();
   }
 
-  // 清理已消失的 cursor 的 glowState
-  for (const id of Object.keys(glowState)) {
-    if (!cursors[id]) delete glowState[id];
+  // 清理已消失 cursor 的狀態
+  for (const id of Object.keys(glowSmooth)) {
+    if (!cursors[id]) delete glowSmooth[id];
   }
 
   ctx.globalCompositeOperation = 'source-over';
