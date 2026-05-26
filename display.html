@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>光・聲 Display</title>
+<title>Shining Together</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #000; overflow: hidden; font-family: monospace; }
@@ -27,8 +27,8 @@
 <body>
 <canvas id="c"></canvas>
 <div id="hud">
-  <div>光點 <span id="cc">0</span></div>
-  <div>聚集 <span id="cl">0</span></div>
+  <div>Players <span id="cc">0</span></div>
+  <div>Cluster <span id="cl">0</span></div>
 </div>
 <div id="clusterMsg" id="cm"></div>
 
@@ -132,7 +132,7 @@ onValue(ref(db, 'cursors'), snap => {
   if (!colorPresent.green) sendToPD(`GREEN 0 0`);
   if (!colorPresent.blue)  sendToPD(`BLUE 0 0`);
 
-  // 聚集訊號
+  // Cluster訊號
   if (clusters.length > 0) {
     clusters.forEach(cl => {
       const intensity = (cl.size / Math.max(Object.keys(cursors).length, 1)).toFixed(4);
@@ -146,10 +146,10 @@ onValue(ref(db, 'cursors'), snap => {
   // cluster message
   if (clusters.length > prevClusterCount) {
     const cl   = clusters[clusters.length - 1];
-    const zh   = { red: '紅', green: '綠', blue: '藍' };
+    const zh   = { red: 'Red', green: 'Green', blue: 'Blue' };
     const cols = Object.keys(cl.colorCount).map(c => zh[c] || c).join('・');
     const el   = document.getElementById('clusterMsg');
-    el.textContent = `${cols} 聚集 × ${cl.size}`;
+    el.textContent = `${cols} Cluster × ${cl.size}`;
     el.classList.add('show');
     setTimeout(() => el.classList.remove('show'), 2500);
   }
