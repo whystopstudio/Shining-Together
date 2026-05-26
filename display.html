@@ -65,6 +65,7 @@ function ch_(c) { return (COLOR[c] || COLOR.red).h; }
 
 let cursors  = {};
 let clusters = [];
+let clusterMembers = new Set(); // 哪些 cursor 在 cluster 裡
 
 // ── frequency mapping ────────────────────────────
 // 對數映射：100–800 Hz，聽起來更自然、不刺耳
@@ -117,6 +118,10 @@ let prevClusterCount = 0;
 onValue(ref(db, 'cursors'), snap => {
   cursors  = snap.val() || {};
   clusters = findClusters(cursors);
+
+  // 更新哪些 cursor 在 cluster 裡
+  clusterMembers = new Set();
+  clusters.forEach(cl => cl.members.forEach(id => clusterMembers.add(id)));
 
   document.getElementById('cc').textContent = Object.keys(cursors).length;
   document.getElementById('cl').textContent = clusters.length;
@@ -172,48 +177,112 @@ onValue(ref(db, 'cursors'), snap => {
 });
 
 // ── draw loop ────────────────────────────────────
-function draw() {
+// 每個 cursor 的動畫狀態（光暈大小平滑過渡）
+const glowState = {}; // id → current glow multiplier (0~1 smoothly)
+
+function draw(ts) {
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, cw, ch);
 
+  // ── additive blending for colour mixing ────────
   ctx.globalCompositeOperation = 'lighter';
-  for (const [, cur] of Object.entries(cursors)) {
+
+  for (const [id, cur] of Object.entries(cursors)) {
     const px  = cur.x * cw, py = cur.y * ch;
     const hex = ch_(cur.color);
-    const g   = ctx.createRadialGradient(px, py, 0, px, py, 70);
+    const inCluster = clusterMembers.has(id);
+
+    // 平滑過渡 glow（靠近時慢慢變大，離開時慢慢縮小）
+    if (!glowState[id]) glowState[id] = 0;
+    const target = inCluster ? 1 : 0;
+    glowState[id] += (target - glowState[id]) * 0.08;
+
+    // 基礎半徑 70，cluster 時膨脹到 140，加上呼吸脈動
+    const pulse    = inCluster ? Math.sin(ts * 0.003) * 12 : 0;
+    const baseSize = 70;
+    const maxExtra = 70; // 最大額外膨脹
+    const radius   = baseSize + glowState[id] * maxExtra + pulse;
+
+    // 外層光暈
+    const g = ctx.createRadialGradient(px, py, 0, px, py, radius);
     g.addColorStop(0,   hex + 'cc');
-    g.addColorStop(0.4, hex + '55');
+    g.addColorStop(0.3, hex + '66');
+    g.addColorStop(0.6, hex + '22');
     g.addColorStop(1,   'transparent');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(px, py, 70, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px, py, radius, 0, Math.PI*2); ctx.fill();
+
+    // cluster 時多一層更亮的內核光
+    if (glowState[id] > 0.1) {
+      const g2 = ctx.createRadialGradient(px, py, 0, px, py, 30);
+      const alpha = Math.round(glowState[id] * 180).toString(16).padStart(2, '0');
+      g2.addColorStop(0, '#ffffff' + alpha);
+      g2.addColorStop(1, 'transparent');
+      ctx.fillStyle = g2;
+      ctx.beginPath(); ctx.arc(px, py, 30, 0, Math.PI*2); ctx.fill();
+    }
   }
 
+  // ── white core dots ────────────────────────────
   ctx.globalCompositeOperation = 'source-over';
-  for (const [, cur] of Object.entries(cursors)) {
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(cur.x*cw, cur.y*ch, 5, 0, Math.PI*2); ctx.fill();
+  for (const [id, cur] of Object.entries(cursors)) {
+    const inCluster = clusterMembers.has(id);
+    const coreSize = inCluster ? 7 : 5;
+    ctx.fillStyle = inCluster ? '#fff' : 'rgba(255,255,255,0.8)';
+    ctx.beginPath(); ctx.arc(cur.x*cw, cur.y*ch, coreSize, 0, Math.PI*2); ctx.fill();
   }
 
+  // ── cluster 視覺效果 ──────────────────────────
   for (const cl of clusters) {
     const px = cl.cx * cw, py = cl.cy * ch;
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+
+    // 外圈呼吸脈動
+    const ringPulse = Math.sin(ts * 0.002) * 8;
+    const ringR = 60 + cl.size * 16 + ringPulse;
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(px, py, ringR, 0, Math.PI*2); ctx.stroke();
+
+    // 第二圈（更大更淡）
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(px, py, 60 + cl.size * 12, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(px, py, ringR + 20, 0, Math.PI*2); ctx.stroke();
+
+    // 成員之間的連線（更亮、實線 + 發光）
     if (cl.members) {
       for (let i = 0; i < cl.members.length; i++) {
         const a = cursors[cl.members[i]]; if (!a) continue;
         for (let j = i+1; j < cl.members.length; j++) {
           const b = cursors[cl.members[j]]; if (!b) continue;
-          ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-          ctx.setLineDash([3,6]);
+
+          // 發光底線
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+          ctx.lineWidth = 4;
+          ctx.setLineDash([]);
           ctx.beginPath();
           ctx.moveTo(a.x*cw, a.y*ch); ctx.lineTo(b.x*cw, b.y*ch);
-          ctx.stroke(); ctx.setLineDash([]);
+          ctx.stroke();
+
+          // 細連線
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(a.x*cw, a.y*ch); ctx.lineTo(b.x*cw, b.y*ch);
+          ctx.stroke();
         }
       }
     }
   }
+
+  // 清理已消失的 cursor 的 glowState
+  for (const id of Object.keys(glowState)) {
+    if (!cursors[id]) delete glowState[id];
+  }
+
+  ctx.globalCompositeOperation = 'source-over';
   requestAnimationFrame(draw);
 }
 requestAnimationFrame(draw);
