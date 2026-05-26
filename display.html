@@ -127,23 +127,26 @@ onValue(ref(db, 'cursors'), snap => {
   document.getElementById('cl').textContent = clusters.length;
 
   // ── 個人音色（用對數映射，100-800 Hz）──────────
-  const colorPresent = { red: false, green: false, blue: false };
+  // 每個顏色只取一個代表（避免同色多人覆蓋）
+  // 發送格式：COLOR freqX freqY amp（amp=0 靜音，amp=1 有聲）
+  const colorData = { red: null, green: null, blue: null };
 
   for (const cur of Object.values(cursors)) {
     const c = cur.color;
-    const freqX = mapFreq(cur.x);
-    const freqY = mapFreq(cur.y);
-    colorPresent[c] = true;
-
-    if (c === 'red')   sendToPD(`RED ${freqX} ${freqY}`);
-    if (c === 'green') sendToPD(`GREEN ${freqX} ${freqY}`);
-    if (c === 'blue')  sendToPD(`BLUE ${freqX} ${freqY}`);
+    // 每個顏色只保留一個（後來的覆蓋前面的，或可改成混合）
+    colorData[c] = cur;
   }
 
-  // 沒有該顏色時發 0 0，讓 PD 靜音
-  if (!colorPresent.red)   sendToPD(`RED 0 0`);
-  if (!colorPresent.green) sendToPD(`GREEN 0 0`);
-  if (!colorPresent.blue)  sendToPD(`BLUE 0 0`);
+  for (const [c, cur] of Object.entries(colorData)) {
+    if (cur) {
+      const freqX = mapFreq(cur.x);
+      const freqY = mapFreq(cur.y);
+      sendToPD(`${c.toUpperCase()} ${freqX} ${freqY} 1`);
+    } else {
+      // 沒有該顏色：發頻率 0 + amp 0，PD 用 amp 控制音量開關
+      sendToPD(`${c.toUpperCase()} 0 0 0`);
+    }
+  }
 
   // ── Cluster 訊號（只取最大的一個）──────────────
   if (clusters.length > 0) {
