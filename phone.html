@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>光・聲</title>
+<title>Shining Together</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root { --c: #ff4444; }
@@ -71,13 +71,13 @@
 <body>
 
 <div id="overlay">
-  <h1>光・聲</h1>
+  <h1>Shining Together</h1>
   <div class="spinner"></div>
-  <p id="overlayMsg">連接中…</p>
+  <p id="overlayMsg">Connecting...</p>
 </div>
 
 <div id="topbar">
-  <span id="status">離線</span>
+  <span id="status">Offline</span>
   <div id="colorpicker">
     <div class="coloropt active" onclick="setColor(this,'red','#ff3a3a')"></div>
     <div class="coloropt"       onclick="setColor(this,'green','#3aff7a')"></div>
@@ -86,7 +86,7 @@
 </div>
 
 <div id="canvas"><canvas id="c"></canvas></div>
-<div id="bottombar"><span id="hint">用手指移動光點</span><span id="pcount" style="font-size:11px;letter-spacing:0.12em;color:rgba(255,255,255,0.3);">光點 0</span></div>
+<div id="bottombar"><span id="hint">Touch and drag to play</span><span id="pcount" style="font-size:11px;letter-spacing:0.12em;color:rgba(255,255,255,0.3);">Players 0</span></div>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -120,11 +120,11 @@ onDisconnect(userRef).remove();
 onValue(ref(db, 'cursors'), snap => {
   allCursors = snap.val() || {};
   const count = Object.keys(allCursors).length;
-  document.getElementById('pcount').textContent = `光點 ${count}`;
+  document.getElementById('pcount').textContent = `Players ${count}`;
 });
 
 document.getElementById('overlay').style.display = 'none';
-document.getElementById('status').textContent = '已連線';
+document.getElementById('status').textContent = 'Connected';
 document.getElementById('status').classList.add('connected');
 
 // ── canvas ──────────────────────────────────────
@@ -210,7 +210,7 @@ function draw(ts) {
     ctx.fillStyle = 'rgba(255,255,255,0.07)';
     ctx.font = '11px Courier New';
     ctx.textAlign = 'center';
-    ctx.fillText('觸碰畫面', cw/2, ch/2 + 4);
+    ctx.fillText('Touch to begin', cw/2, ch/2 + 4);
     ctx.textAlign = 'left';
   }
 
