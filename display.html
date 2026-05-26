@@ -109,9 +109,6 @@ function sendToPD(msg) {
   fetch(`http://localhost:9001/pd?msg=${encodeURIComponent(msg)}`).catch(() => {});
 }
 
-// ── 防止和弦音符重複觸發（模擬 PD 的 [change]）────
-let lastChordMidi = -1;
-
 // ── Firebase listener ────────────────────────────
 let prevClusterCount = 0;
 
@@ -133,7 +130,6 @@ onValue(ref(db, 'cursors'), snap => {
 
   for (const cur of Object.values(cursors)) {
     const c = cur.color;
-    // 每個顏色只保留一個（後來的覆蓋前面的，或可改成混合）
     colorData[c] = cur;
   }
 
@@ -143,27 +139,17 @@ onValue(ref(db, 'cursors'), snap => {
       const freqY = mapFreq(cur.y);
       sendToPD(`${c.toUpperCase()} ${freqX} ${freqY} 1`);
     } else {
-      // 沒有該顏色：發頻率 0 + amp 0，PD 用 amp 控制音量開關
       sendToPD(`${c.toUpperCase()} 0 0 0`);
     }
   }
 
   // ── Cluster 訊號（只取最大的一個）──────────────
   if (clusters.length > 0) {
-    const cl = clusters[0]; // 只取最大的 cluster
+    const cl = clusters[0];
     const intensity = (cl.size / Math.max(Object.keys(cursors).length, 1)).toFixed(4);
     sendToPD(`CLUSTER ${cl.cx.toFixed(4)} ${cl.cy.toFixed(4)} ${intensity} ${cl.size}`);
-
-    // ── CHORD 觸發（cy → MIDI 音符）──────────────
-    // C3(48) ~ C5(72)，只在音符改變時才發
-    const midi = Math.round(48 + cl.cy * 24);
-    if (midi !== lastChordMidi) {
-      lastChordMidi = midi;
-      sendToPD(`CHORD ${midi} ${cl.size}`);
-    }
   } else {
     sendToPD(`CLUSTER 0 0 0 0`);
-    lastChordMidi = -1; // 重置，下次聚集時一定會觸發
   }
 
   // ── cluster message ────────────────────────────
