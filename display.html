@@ -30,7 +30,7 @@
   <div>Players <span id="cc">0</span></div>
   <div>Cluster <span id="cl">0</span></div>
 </div>
-<div id="clusterMsg" id="cm"></div>
+<div id="clusterMsg"></div>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -62,10 +62,16 @@ const COLOR = {
   blue:  { h: '#3a7aff', r: '58,122,255'  },
 };
 function ch_(c) { return (COLOR[c] || COLOR.red).h; }
-function cr_(c) { return (COLOR[c] || COLOR.red).r; }
 
 let cursors  = {};
 let clusters = [];
+
+// ── frequency mapping ────────────────────────────
+// 對數映射：100–800 Hz，聽起來更自然、不刺耳
+function mapFreq(val) {
+  // val: 0~1 → 100~800 Hz (log scale)
+  return (100 * Math.pow(8, val)).toFixed(1);
+}
 
 // ── cluster detection ────────────────────────────
 const CLUSTER_RADIUS    = 0.15;
@@ -92,15 +98,18 @@ function findClusters(cur) {
       result.push({ members: group, cx, cy, colorCount, size: group.length });
     }
   }
+  // 按 size 排序，最大的在前面
+  result.sort((a, b) => b.size - a.size);
   return result;
 }
 
-// ── UDP bridge to PD (via local relay) ──────────────
-// display.html sends fetch to local relay on port 9001
-// which forwards UDP to PD on 9000
+// ── UDP bridge to PD ────────────────────────────
 function sendToPD(msg) {
   fetch(`http://localhost:9001/pd?msg=${encodeURIComponent(msg)}`).catch(() => {});
 }
+
+// ── 防止和弦音符重複觸發（模擬 PD 的 [change]）────
+let lastChordMidi = -1;
 
 // ── Firebase listener ────────────────────────────
 let prevClusterCount = 0;
@@ -112,40 +121,46 @@ onValue(ref(db, 'cursors'), snap => {
   document.getElementById('cc').textContent = Object.keys(cursors).length;
   document.getElementById('cl').textContent = clusters.length;
 
-  // send to PD — per color
+  // ── 個人音色（用對數映射，100-800 Hz）──────────
   const colorPresent = { red: false, green: false, blue: false };
 
   for (const cur of Object.values(cursors)) {
-    const c    = cur.color;
-    const freqX = (100 + cur.x * 1900).toFixed(1);
-    const freqY = (100 + cur.y * 1900).toFixed(1);
+    const c = cur.color;
+    const freqX = mapFreq(cur.x);
+    const freqY = mapFreq(cur.y);
     colorPresent[c] = true;
 
-    // 每個顏色各自發訊號
     if (c === 'red')   sendToPD(`RED ${freqX} ${freqY}`);
     if (c === 'green') sendToPD(`GREEN ${freqX} ${freqY}`);
     if (c === 'blue')  sendToPD(`BLUE ${freqX} ${freqY}`);
   }
 
-  // 沒有該顏色時發 0 0，讓 PD timeout 靜音
+  // 沒有該顏色時發 0 0，讓 PD 靜音
   if (!colorPresent.red)   sendToPD(`RED 0 0`);
   if (!colorPresent.green) sendToPD(`GREEN 0 0`);
   if (!colorPresent.blue)  sendToPD(`BLUE 0 0`);
 
-  // Cluster訊號
+  // ── Cluster 訊號（只取最大的一個）──────────────
   if (clusters.length > 0) {
-    clusters.forEach(cl => {
-      const intensity = (cl.size / Math.max(Object.keys(cursors).length, 1)).toFixed(4);
-      const colorMix  = Object.keys(cl.colorCount).join('+');
-      sendToPD(`CLUSTER ${cl.cx.toFixed(4)} ${cl.cy.toFixed(4)} ${intensity} ${cl.size}`);
-    });
+    const cl = clusters[0]; // 只取最大的 cluster
+    const intensity = (cl.size / Math.max(Object.keys(cursors).length, 1)).toFixed(4);
+    sendToPD(`CLUSTER ${cl.cx.toFixed(4)} ${cl.cy.toFixed(4)} ${intensity} ${cl.size}`);
+
+    // ── CHORD 觸發（cy → MIDI 音符）──────────────
+    // C3(48) ~ C5(72)，只在音符改變時才發
+    const midi = Math.round(48 + cl.cy * 24);
+    if (midi !== lastChordMidi) {
+      lastChordMidi = midi;
+      sendToPD(`CHORD ${midi} ${cl.size}`);
+    }
   } else {
     sendToPD(`CLUSTER 0 0 0 0`);
+    lastChordMidi = -1; // 重置，下次聚集時一定會觸發
   }
 
-  // cluster message
+  // ── cluster message ────────────────────────────
   if (clusters.length > prevClusterCount) {
-    const cl   = clusters[clusters.length - 1];
+    const cl   = clusters[0];
     const zh   = { red: 'Red', green: 'Green', blue: 'Blue' };
     const cols = Object.keys(cl.colorCount).map(c => zh[c] || c).join('・');
     const el   = document.getElementById('clusterMsg');
@@ -162,7 +177,6 @@ function draw() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, cw, ch);
 
-  // additive blending for colour mixing
   ctx.globalCompositeOperation = 'lighter';
   for (const [, cur] of Object.entries(cursors)) {
     const px  = cur.x * cw, py = cur.y * ch;
@@ -174,7 +188,7 @@ function draw() {
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(px, py, 70, 0, Math.PI*2); ctx.fill();
   }
-  // white core dots
+
   ctx.globalCompositeOperation = 'source-over';
   for (const [, cur] of Object.entries(cursors)) {
     ctx.fillStyle = '#fff';
